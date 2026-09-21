@@ -44,7 +44,14 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .stone.O{background:radial-gradient(circle at 35% 35%,#fff,#cdcdcd);border:1px solid #8d8d8d}
 .stone.pending{opacity:.55}
 .last{position:absolute;left:50%;top:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;background:#e11d48;z-index:4}
-.heat{position:absolute;inset:14%;border-radius:50%;background:var(--accent);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700}
+.heat{position:absolute;inset:14%;border-radius:50%;background:var(--accent);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700;pointer-events:none}
+.heat,.cand,.truth{transition:opacity 1.4s ease}
+.grid.faded .heat,.grid.faded .cand,.grid.faded .truth{opacity:0 !important}
+.grid.hidethoughts .heat,.grid.hidethoughts .cand{display:none}
+.pick{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;letter-spacing:-.02em;z-index:5;pointer-events:none}
+.pick.X{color:#fff}.pick.O{color:#1f1a14}
+@keyframes pop{from{transform:scale(.55);opacity:.3}to{transform:scale(1);opacity:1}}
+.stone.new{animation:pop .22s ease-out}
 .cand{position:absolute;inset:30%;border-radius:50%;border:1.5px solid var(--accent);opacity:.45;z-index:1}
 .truth{position:absolute;inset:8%;border-radius:50%;border:2px dashed var(--bad);z-index:2}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
@@ -117,6 +124,10 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
           </div>
           <div class="modehelp" id="modehelp"></div>
         </div>
+        <span class="lab">Thoughts</span>
+        <div class="seg" id="thoughtseg" role="radiogroup" aria-label="Jev's thoughts on the board">
+          <button type="button" data-v="fade" title="Show Jev's probabilities, then fade them out when you start your move">Fade</button><button type="button" data-v="keep" title="Keep them on the board">Keep</button><button type="button" data-v="hide" title="Never draw them on the board">Hide</button>
+        </div>
         <span class="lab">Play</span>
         <div class="actions">
           <button class="primary" id="newgame">New game</button>
@@ -150,7 +161,7 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
     </div>
   </div>
 </main>
-<footer>Blue discs are Jev's top-5 probabilities. Thin blue rings are the candidate pool code offered in Player mode. A dashed red ring marks a point code identified that Jev missed in Naked or Assisted mode. "Via" says who decided: moves labelled forced or only-move are played by code with no call; best is Jev's pick. "Heur." is where Jev's pick ranked in the code heuristic's ordering.</footer>
+<footer>Blue discs are Jev's top-5 probabilities, sized by probability; the number on the last stone is the probability Jev gave the move it played. They fade when you start your move (Thoughts: Fade), or stay (Keep). Thin blue rings are the candidate pool code offered in Player mode. A dashed red ring marks a point code identified that Jev missed in Naked or Assisted mode. "Via" says who decided: moves labelled forced or only-move are played by code with no call; best is Jev's pick. "Heur." is where Jev's pick ranked in the code heuristic's ordering.</footer>
 <script>
 const CFG={
   gomoku:{ title:"Is Jev a good Gomoku player?", sub:"15×15, five in a row. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
@@ -163,7 +174,8 @@ const CFG={
 const LSMODE="jev-gomoku-mode", LSGAME="jev-game";
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
-let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player";
+let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false;
+const LSTHOUGHTS="jev-thoughts";
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
 function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(cfg.ls)||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
 function saveScore(){ try{ localStorage.setItem(cfg.ls,JSON.stringify(score)); }catch{} }
@@ -173,7 +185,7 @@ const MODEHELP={
   assisted:"Every legal point is an option with exact facts computed by code. Jev answers all three questions; claims are verified before being played.",
   naked:"Every legal point is an option with no description. Measures Jev alone."
 };
-try{ const m=localStorage.getItem(LSMODE); if(m&&MODEHELP_KEYS.includes(m)) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; }catch{}
+try{ const m=localStorage.getItem(LSMODE); if(m&&MODEHELP_KEYS.includes(m)) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; const t=localStorage.getItem(LSTHOUGHTS); if(["fade","keep","hide"].includes(t)) thoughtsSel=t; }catch{}
 
 
 function newGame(jev){
@@ -222,11 +234,21 @@ async function play(humanMove){
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend;
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
-    if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); }
+    if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing") finishGame();
   }catch(e){ $("err").textContent=e.message; }
   S.busy=false; S.pending=null; render();
 }
+
+function scheduleFade(){
+  clearTimeout(fadeTimer); fadeArmed=false; gridEl.classList.remove("faded");
+  if(thoughtsSel!=="fade") return;
+  fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),4000);
+}
+gridEl.addEventListener("pointermove",()=>{
+  if(thoughtsSel!=="fade"||fadeArmed||!S||!S.last||S.busy||gridEl.classList.contains("faded")) return;
+  fadeArmed=true; clearTimeout(fadeTimer); fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),700);
+},{passive:true});
 
 function addTurnToScore(t){
   score.moves++;
@@ -280,6 +302,9 @@ function render(){
   $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2;
   $("pass").hidden=!cfg.pass;
   const lastKey=S.moves.length? S.moves[S.moves.length-1].split(" ")[1] : null;
+  const lastIsJev = S.last && !S.busy && S.moves.length && S.moves[S.moves.length-1].startsWith(S.jev+" ");
+  const pickP = (lastIsJev && S.last.answers) ? (S.last.answers.best_move.top.find(([k])=>k===S.last.move)||[])[1] : undefined;
+  gridEl.classList.toggle("hidethoughts",thoughtsSel==="hide");
   const heat={}; let pmax=0; const candSet=new Set();
   if(S.last&&S.last.answers){ for(const [k,p] of S.last.answers.best_move.top){ if(k==="pass") continue; heat[k]=p; pmax=Math.max(pmax,p); } }
   if(S.last&&S.last.candidates) for(const c of S.last.candidates) candSet.add(c.key);
@@ -294,12 +319,15 @@ function render(){
     for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth,.cand")) el.remove();
     const ch=S.board[r][c];
     if(ch!=="."){
-      const st=document.createElement("span"); st.className="stone "+ch; cell.appendChild(st);
-      if(k===lastKey){ const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
+      const st=document.createElement("span"); st.className="stone "+ch+(k===lastKey&&k!==S._animated?" new":""); cell.appendChild(st);
+      if(k===lastKey){
+        if(pickP!==undefined && ch===S.jev){ const pk=document.createElement("span"); pk.className="pick "+ch; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk); }
+        else { const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
+      }
     } else if(S.pending===k){
       const st=document.createElement("span"); st.className="stone pending "+S.human; cell.appendChild(st);
     } else {
-      if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.18+0.7*heat[k]/(pmax||1)).toFixed(2); h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
+      if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; const f=heat[k]/(pmax||1); h.style.opacity=(0.25+0.6*f).toFixed(2); h.style.inset=(30-22*f).toFixed(0)+"%"; if(heat[k]>=0.05) h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
       else if(candSet.has(k)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
       if(truthRing.has(k)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
     }
@@ -321,6 +349,7 @@ function render(){
   $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy; $("pass").disabled=locked;
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
   for(const b of $("modeseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===modeSel); b.setAttribute("aria-checked",b.dataset.v===modeSel); }
+  for(const b of $("thoughtseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===thoughtsSel); b.setAttribute("aria-checked",b.dataset.v===thoughtsSel); }
   $("modehelp").textContent=MODEHELP[modeSel]||"";
 
   const t=S.last;
@@ -358,6 +387,7 @@ function render(){
     stat(`${g.q1Found}/${g.q1Opp}`,cfg.l1)+stat(`${g.q2Found}/${g.q2Need}`,cfg.l2)+
     stat(g.calls?Math.round(g.latency/g.calls):"–","avg ms per call")+stat(g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","avg input tokens");
   $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t1],(x.truth[cfg.t1]||[]).length)}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t2],(x.truth[cfg.t2]||[]).length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${x.usage&&x.usage.input!=null?x.usage.input:"–"}</td></tr>`).join("");
+  if(lastKey) S._animated=lastKey;
   renderIO();
 
   $("alltime").innerHTML=
@@ -372,6 +402,7 @@ $("jevopens").addEventListener("click",()=>{ newGame("X"); render(); play(null);
 $("pass").addEventListener("click",()=>{ if(S.game==="go") play("pass"); });
 $("resetscore").addEventListener("click",()=>{ score={...DEFAULT_SCORE}; saveScore(); render(); });
 for(const b of $("modeseg").querySelectorAll("button")) b.addEventListener("click",()=>{ modeSel=b.dataset.v; try{ localStorage.setItem(LSMODE,modeSel); }catch{} render(); });
+for(const b of $("thoughtseg").querySelectorAll("button")) b.addEventListener("click",()=>{ thoughtsSel=b.dataset.v; try{ localStorage.setItem(LSTHOUGHTS,thoughtsSel); }catch{} scheduleFade(); render(); });
 for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||b.dataset.v===gameSel) return; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} newGame("O"); render(); });
 
 newGame("O"); render();
