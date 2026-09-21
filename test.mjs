@@ -599,9 +599,9 @@ test("chess: a long game costs about the same with a token as an opening does", 
 
 // ---------------- records: sessions, store, leaderboard, replay, claim ----------------
 import { storeFor, memoryStore } from "./functions/_lib/store.js";
-import { handleLeaderboard, handleGame, handleClaim } from "./functions/_lib/records.js";
+import { handleLeaderboard, handleGame, resetSchemaProbe } from "./functions/_lib/records.js";
 
-test("records: a gomoku game played through session tokens is recorded, claimable and replayable", async () => {
+test("records: a gomoku game played through session tokens is recorded and replayable", async () => {
   const env = { TYPESAFE_API_KEY: "" }; // mock backend, memory store
   let board = G.toRows(G.emptyBoard()), moves = [], state = null, gameId = null, status = "playing", r;
   // play until the human wins: the human is greedy X, Jev is mock O; force a quick human win by giving X a line
@@ -626,11 +626,6 @@ test("records: a gomoku game played through session tokens is recorded, claimabl
   // a tampered token is refused; a token from another game too
   const bad = await handleMove({ board, moves, humanMove: "A1", jev: "O", state: state.slice(0, -2) + "zz" }, env);
   assert.equal(bad.status, 400); assert.match(bad.body.error, /bad state/);
-  // claims: only a human win, once, and only through the token
-  const claim = await handleClaim({ state, name: " Kyung-Hoon <b>" }, {});
-  if (status === "human_wins") { assert.equal(claim.status, 200); assert.equal(claim.body.name, "Kyung-Hoon b"); assert.equal((await handleClaim({ state, name: "again" }, {})).status, 400); }
-  else assert.equal(claim.status, 400);
-  assert.equal((await handleClaim({ state: "nope", name: "x" }, {})).status, 400);
 });
 
 test("records: a board sent without a token is playable but never recorded", async () => {
@@ -725,7 +720,6 @@ test("login issues a session; the session attributes games; /api/me lists them; 
   await store.upsertGame({ id: "e".repeat(16), game: "go", mode: "player", jev: "O", backend: "native", model: "jev-1.13.0", result: "human_wins", plies: 40, created_at: Date.now(), ended_at: Date.now(), user_id: login.body.user.id, name: "Kyung-Hoon" });
   const lb = await store.leaderboard("go");
   assert.equal(lb[0].name, "Kyung-Hoon");
-  assert.equal((await handleClaim({ state: r1.body.state, name: "someone else" }, {})).status, 400);
   assert.equal(r1.body.owner, "Kyung-Hoon");
   // sign-in after an anonymous game attaches it: the game's own state token proves the caller played it
   const anon = await handleChessMove({ moves: [], humanMove: "d4", jev: "O", mode: "player" }, {});
@@ -753,7 +747,7 @@ test("login issues a session; the session attributes games; /api/me lists them; 
   const winId = "f".repeat(16);
   await store.upsertGame({ id: winId, game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1", result: "human_wins", plies: 20, created_at: Date.now(), ended_at: Date.now() });
   const winTok = await sign({ g: "gomoku", id: winId, n: 20, pos: null, t: Date.now() }, secretOf({}));
-  assert.equal((await handleClaim({ state: winTok, name: "Zed" }, {})).status, 200);
+  await store.upsertGame({ id: winId, game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1", result: "human_wins", plies: 20, created_at: Date.now(), ended_at: Date.now(), name: "Zed" }); // a name written before the sign-in
   const late2 = await handleLogin({ credential: g.token, state: winTok }, {}, g.jwks);
   assert.equal(late2.body.attached, true); assert.equal(late2.body.game.name, "Zed"); assert.equal((await store.getGame(winId)).name, "Zed");
   // an expired session plays anonymously: the move succeeds and reports no owner
@@ -817,11 +811,19 @@ import { d1Store } from "./functions/_lib/store.js";
 function fakeD1() {
   const db = new DatabaseSync(":memory:");
   db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
-  return { prepare(sql) { const st = db.prepare(sql); return { bind(...args) { const a = args.map((v) => (v === undefined ? null : v)); return {
-    async run() { const r = st.run(...a); return { meta: { changes: Number(r.changes) } }; },
-    async first() { return st.get(...a) ?? null; },
-    async all() { return { results: st.all(...a) }; },
-  }; } }; } };
+  const shim = { raw: db, prepare(sql) {
+    // D1 refuses a statement whose numbered parameters leave a gap, and a bind whose count differs; SQLite alone accepts both
+    const idx = [...new Set((sql.match(/\?(\d+)/g) || []).map((m) => Number(m.slice(1))))].sort((a, b) => a - b);
+    assert.deepEqual(idx, idx.map((_, i) => i + 1), "parameter numbering has a gap: " + sql.slice(0, 70));
+    const st = db.prepare(sql);
+    const run = (a) => ({
+      async run() { const r = st.run(...a); return { meta: { changes: Number(r.changes) } }; },
+      async first() { return st.get(...a) ?? null; },
+      async all() { return { results: st.all(...a) }; },
+    });
+    return { ...run([]), bind(...args) { const a = args.map((v) => (v === undefined ? null : v)); assert.equal(a.length, idx.length, "bind count differs from the statement's parameters: " + sql.slice(0, 70)); return run(a); } };
+  } };
+  return shim;
 }
 test("d1 store: the production SQL keeps first-write attribution, marks a changed mode mixed, counts a game once, attaches and claims", async () => {
   const store = d1Store(fakeD1());
@@ -844,11 +846,69 @@ test("d1 store: the production SQL keeps first-write attribution, marks a change
   const id3 = "e".repeat(16);
   await store.upsertGame({ id: id3, game: "chess", mode: "player", jev: "O", backend: "mock", result: "human_wins", plies: 8, created_at: 2, ended_at: 3 });
   assert.equal((await store.attach(id3, "g_z", "Zed")).user_id, "g_z"); assert.equal(await store.attach(id3, "g_y", "Yan"), null);
-  assert.equal(await store.claim(id3, "Other"), null);
   assert.equal((await store.myGames("g_z"))[0].backend, "mock");
   assert.deepEqual(await store.leaderboard("chess"), []);
   assert.equal((await store.leaderboard("gomoku"))[0].name, "Alice");
   await store.addTurn({ game_id: id3, ply: 0, side: "human", move: "e4", board: ["x"], source: "human" });
   assert.equal((await store.getTurn(id3, 0)).move, "e4"); assert.equal(await store.getTurn(id3, 1), null);
   assert.equal((await store.getTurns(id3)).length, 1);
+});
+
+test("gate: no anonymous request reaches the live Jev in any shape, and a refused request records nothing", async () => {
+  const live = { TYPESAFE_API_KEY: "test-key" };
+  const realFetch = globalThis.fetch; let calls = 0; globalThis.fetch = async () => { calls++; throw new Error("REACHED_JEV"); };
+  try {
+    const one = Array.from({ length: 15 }, (_, r) => (r === 7 ? ".......X......." : ".".repeat(15)));
+    assert.equal((await handleMove({ board: one, moves: ["X H8"], humanMove: null, jev: "O", mode: "player" }, live)).status, 401); // Jev to move, no human move
+    assert.equal((await handleGoMove({ moves: ["X E5"], humanMove: null, jev: "O", mode: "player" }, live)).status, 401);
+    assert.equal((await handleGoMove({ moves: [], humanMove: "pass", jev: "O", mode: "player" }, live)).status, 401);
+    assert.equal((await handleChessMove({ moves: ["e4"], humanMove: null, jev: "O", mode: "player" }, live)).status, 401);
+    assert.equal((await handleChessMove({ moves: [], humanMove: null, jev: "X", mode: "player" }, live)).status, 401);
+    const r = await handleMove({ board: Array.from({ length: 15 }, () => ".".repeat(15)), moves: [], humanMove: "H8", jev: "O", mode: "player" }, live);
+    assert.equal(r.status, 401); assert.equal(r.after, undefined); // nothing to record
+    assert.equal((await handleChessMove({ moves: [], humanMove: null, jev: "O", mode: "player" }, live)).status, 200); // the one open shape
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test("schema probe: ok on schema.sql, the database's own error when a write column is missing, the leaderboard still answers, the migration repairs it", async () => {
+  const db = fakeD1(); const store = d1Store(db);
+  assert.equal(await store.probe(), "ok");
+  resetSchemaProbe();
+  const good = await handleLeaderboard({}, { game: "gomoku" }, { DB: db });
+  assert.equal(good.body.schema, "ok"); assert.equal(good.body.durable, true);
+  db.raw.exec("DROP INDEX IF EXISTS games_user; ALTER TABLE games DROP COLUMN user_id"); // the table as it was before sign-in existed
+  resetSchemaProbe();
+  const bad = await handleLeaderboard({}, { game: "gomoku" }, { DB: db });
+  assert.equal(bad.status, 200); assert.equal(bad.body.ok, true); assert.match(bad.body.schema, /user_id/);
+  await assert.rejects(store.upsertGame({ id: "9".repeat(16), game: "go", mode: "player", jev: "O", backend: "native", plies: 2, created_at: 1 })); // and the write really fails
+  const sql = readFileSync(new URL("./migrations/2026-09-21-user-id.sql", import.meta.url), "utf8").split("\n").filter((l) => l.trim() && !l.startsWith("--"));
+  for (const stmt of sql) db.raw.exec(stmt); // one at a time, as the file says
+  assert.equal(await store.probe(), "ok");
+  assert.equal((await handleLeaderboard({}, { game: "gomoku" }, { DB: db })).body.schema, "ok"); // a failed probe is retried, so the repair shows without a restart
+  await store.upsertGame({ id: "9".repeat(16), game: "go", mode: "player", jev: "O", backend: "native", plies: 2, created_at: 1, user_id: "g_a", name: "A" });
+  assert.equal((await store.getGame("9".repeat(16))).user_id, "g_a");
+});
+
+test("adapter: a failed record write is logged and the move still answers", async () => {
+  const { adapt } = await import("./functions/_lib/adapter.js");
+  const h = adapt(async () => ({ status: 200, body: { ok: true }, after: async () => { throw new Error("D1 down"); } }));
+  const errs = []; const orig = console.error; console.error = (...a) => errs.push(a.join(" "));
+  try {
+    const res = await h.onRequestPost({ request: new Request("http://x/api/move", { method: "POST", body: "{}" }), env: {} });
+    assert.equal(res.status, 200); assert.equal((await res.json()).ok, true);
+    assert.ok(errs.some((e) => e.includes("record failed")));
+  } finally { console.error = orig; }
+});
+
+test("page: every id the script asks for exists once, and the chess sprite holds exactly the twelve pieces pieceSvg can name", () => {
+  const html = readFileSync(new URL("./public/index.html", import.meta.url), "utf8");
+  const all = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]); const ids = new Set(all);
+  assert.equal(all.length, ids.size, "duplicate ids");
+  const used = [...new Set([...html.matchAll(/\$\("([^"]+)"\)/g)].map((m) => m[1]))];
+  assert.deepEqual(used.filter((i) => !ids.has(i)), []);
+  for (const id of ["gsi", "gsi3", "signout", "signout2"]) assert.ok(ids.has(id), id); // reached through loops, not literals
+  const symbols = [...html.matchAll(/<symbol id="(pc-[^"]+)"/g)].map((m) => m[1]).sort();
+  const want = []; for (const c of "wb") for (const p of "KQRBNP") want.push(`pc-${c}${p}`);
+  assert.deepEqual(symbols, want.sort());
 });

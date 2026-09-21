@@ -7,7 +7,7 @@ for (const f of [".dev.vars", ".env"]) { try { process.loadEnvFile(f); break; } 
 const { handleMove, backend } = await import("./functions/_lib/move.js");
 const { handleGoMove } = await import("./functions/_lib/go_move.js");
 const { handleChessMove } = await import("./functions/_lib/chess_move.js");
-const { handleLeaderboard, handleGame, handleClaim, handleMe } = await import("./functions/_lib/records.js");
+const { handleLeaderboard, handleGame, handleMe } = await import("./functions/_lib/records.js");
 const { handleLogin } = await import("./functions/_lib/auth.js");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -25,7 +25,7 @@ http.createServer(async (req, res) => {
     const r = await handleGame({ id: gm[1] }, Object.fromEntries(url.searchParams), process.env);
     res.writeHead(r.status, { "content-type": "application/json" }); return res.end(JSON.stringify(r.body));
   }
-  const posts = { "/api/move": handleMove, "/api/go": handleGoMove, "/api/chess": handleChessMove, "/api/claim": handleClaim, "/api/login": handleLogin, "/api/me": handleMe };
+  const posts = { "/api/move": handleMove, "/api/go": handleGoMove, "/api/chess": handleChessMove, "/api/login": handleLogin, "/api/me": handleMe };
   if (posts[url.pathname]) {
     const handle = posts[url.pathname];
     if (req.method !== "POST") { res.writeHead(405, { "content-type": "application/json" }); return res.end('{"ok":false,"error":"POST only"}'); }

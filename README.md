@@ -41,7 +41,8 @@ code without a call (a five, an open four, a forced block, mate in one) and are 
   defender on the square; pinned pieces are treated as free to move), what it leaves en prise, what
   it threatens, check, mate, castling and development, and ranks them. Code plays mate in one; Jev
   picks from the top twelve. There is no search. The pieces are Colin M.L. Burnett's SVG set
-  (CC BY-SA 3.0, via Wikimedia Commons), inlined as a sprite.
+  ([CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), from
+  [Wikimedia Commons](https://commons.wikimedia.org/wiki/Category:SVG_chess_pieces)), combined into one inline sprite.
 
 The page shows where Jev's pick ranked in the code's ordering ("heuristic #k"), so you can see
 whether Jev's judgment agrees with, beats, or ignores the one-ply evaluation.
@@ -108,11 +109,11 @@ mode is sealed into the token too.
 
 - **Hall of fame** (`GET /api/leaderboard?game=gomoku`): human wins against the live Jev, fewest
   plies first, with the model version. The response also carries `backend` (`native` or `mock`) and
-  `schema` (`"ok"`, or the database's own error if a column the code writes is missing).
+  `schema` (`"ok"`, or the database's own error if a column the code writes is missing; the page
+  then shows "Not recorded" on every live game).
 - **Replay** (`?replay=<id>` on the page, `GET /api/game/<id>`): any recorded game, cached at the
   edge once finished.
 - Practice games are recorded and listed under your games, marked as practice, but never count.
-- `POST /api/claim`, the old name form for anonymous wins, still exists; the page no longer needs it.
 
 Storage is Cloudflare D1, set up in the dashboard: Workers & Pages → D1 → create a database named
 `jev-go`, run `schema.sql` in its Console tab, then in the Pages project's Settings → Bindings add a
@@ -131,7 +132,7 @@ public/index.html            the page (inline CSS + JS, the chess piece sprite)
 functions/api/move.js        POST /api/move   Gomoku
 functions/api/go.js          POST /api/go     Go 9×9
 functions/api/chess.js       POST /api/chess
-functions/api/login.js, me.js, leaderboard.js, game/[id].js, claim.js   sign-in and records
+functions/api/login.js, me.js, leaderboard.js, game/[id].js   sign-in and records
 functions/_lib/move.js, go_move.js, chess_move.js   handler cores (prompt, Jev call, verify, decide)
 functions/_lib/gomoku.js     Gomoku threat engine, candidate ranking, descriptions
 functions/_lib/go.js         Go engine: groups, captures, superko, scoring, annotations
@@ -139,7 +140,7 @@ functions/_lib/chess.js      chess annotations on top of vendored chess.js
 functions/_lib/jev.js        Jev transport (TypeSafe API, or a heuristic stand-in when no key is set)
 functions/_lib/session.js    signed game sessions (position, mode), records
 functions/_lib/store.js      D1 store and memory store
-functions/_lib/records.js    leaderboard, replay, me, claim
+functions/_lib/records.js    leaderboard, replay, me
 functions/_lib/google.js, auth.js, token.js   Google ID token verification, player sessions, HMAC
 schema.sql, migrations/      D1 schema and the changes to apply to an existing database
 dev.mjs                      plain Node dev server (no wrangler needed)

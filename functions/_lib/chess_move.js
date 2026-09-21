@@ -86,7 +86,8 @@ export async function handleChessMove(body, env = {}) {
     } else c = C.replay(mv);
     const store = storeFor(env);
     const user = await userFromSession(env, body && body.session);
-    if (be.kind === "native" && !user && (humanMove || jev === "X")) throw Object.assign(new Error("sign in to play"), { status: 401 }); // live games are always attributed
+    // Only a state query on the human's turn is open (it records nothing and calls nobody); anything else reaches Jev.
+    if (be.kind === "native" && !user && !(humanMove === null && c.turn() === opp)) throw Object.assign(new Error("sign in to play"), { status: 401 });
     const startPly = mv.length;
     let humanBoard = null, humanSan = null;
     const done = async (status, jevInfo) => {

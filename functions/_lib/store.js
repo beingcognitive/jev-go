@@ -23,12 +23,6 @@ export function memoryStore() {
     async getTurns(id) { return (turns.get(id) || []).filter(Boolean); },
     async getTurn(id, ply) { return (turns.get(id) || [])[ply] || null; },
     async probe() { return "ok"; },
-    async claim(id, name) {
-      const g = games.get(id);
-      if (!g || g.result !== "human_wins" || g.name) return null;
-      g.name = name;
-      return g;
-    },
     // Attach an anonymous game to a signed-in player (sign-in after the game). A game that already has an owner is left alone.
     async attach(id, userId, name) {
       const g = games.get(id);
@@ -84,20 +78,17 @@ export function d1Store(db) {
     },
     async getGame(id) { return (await db.prepare("SELECT * FROM games WHERE id = ?1").bind(id).first()) || null; },
     async getTurn(id, ply) { return (await db.prepare("SELECT ply, side, move FROM turns WHERE game_id = ?1 AND ply = ?2").bind(id, ply).first()) || null; },
-    // Touches every column the writes use, so a schema that lags behind schema.sql is reported instead of silently losing games.
+    // Names every column the two writes use (same order as the INSERTs), so a schema that lags behind schema.sql is
+    // reported instead of silently losing games. Called once per isolate by the leaderboard.
     async probe() {
-      await db.prepare("SELECT user_id, backend, model, result, plies, name, ended_at FROM games LIMIT 1").all();
-      await db.prepare("SELECT io, pick, heat FROM turns LIMIT 1").all();
-      await db.prepare("SELECT n FROM counters LIMIT 1").all();
+      await db.prepare("SELECT id, game, mode, jev, backend, model, result, plies, name, user_id, created_at, ended_at FROM games LIMIT 1").all();
+      await db.prepare("SELECT game_id, ply, side, move, board, source, heuristic_rank, verdict, heat, pick, latency_ms, input_tokens, output_tokens, io FROM turns LIMIT 1").all();
+      await db.prepare("SELECT game, result, n FROM counters LIMIT 1").all();
       return "ok";
     },
     async getTurns(id) {
       const { results } = await db.prepare("SELECT * FROM turns WHERE game_id = ?1 ORDER BY ply").bind(id).all();
       return results.map((t) => ({ ...t, board: JSON.parse(t.board), verdict: t.verdict ? JSON.parse(t.verdict) : null, heat: t.heat ? JSON.parse(t.heat) : null, io: t.io ? JSON.parse(t.io) : null }));
-    },
-    async claim(id, name) {
-      const r = await db.prepare("UPDATE games SET name = ?2 WHERE id = ?1 AND result = 'human_wins' AND name IS NULL").bind(id, name).run();
-      return r.meta && r.meta.changes ? this.getGame(id) : null;
     },
     async attach(id, userId, name) {
       const r = await db.prepare("UPDATE games SET user_id = ?2, name = COALESCE(name, ?3) WHERE id = ?1 AND user_id IS NULL").bind(id, userId, name).run();

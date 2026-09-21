@@ -150,7 +150,7 @@ export async function handleMove(body, env = {}) {
     const be = backend(env);
     const store = storeFor(env);
     const user = await userFromSession(env, body && body.session);
-    if (be.kind === "native" && !user && (humanMove || jev === "X")) throw Object.assign(new Error("sign in to play"), { status: 401 }); // live games are always attributed
+    if (be.kind === "native" && !user) throw Object.assign(new Error("sign in to play"), { status: 401 }); // every request here ends in a call to Jev: live games are always attributed
     const startPly = mv.length;
     let humanBoard = null, humanKey = null;
     const done = async (status, jevInfo) => ({
