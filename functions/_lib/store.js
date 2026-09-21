@@ -4,10 +4,14 @@
 const LEADERBOARD_LIMIT = 50;
 
 export function memoryStore() {
-  const games = new Map(), turns = new Map();
+  const games = new Map(), turns = new Map(), counters = new Map();
   return {
     kind: "memory",
-    async upsertGame(g) { games.set(g.id, { ...(games.get(g.id) || {}), ...g }); },
+    async upsertGame(g) {
+      const prev = games.get(g.id);
+      games.set(g.id, { ...(prev || {}), ...g });
+      if (g.result && !(prev && prev.result) && g.backend === "native") { const k = `${g.game}|${g.result}`; counters.set(k, (counters.get(k) || 0) + 1); }
+    },
     async addTurn(t) { const arr = turns.get(t.game_id) || []; arr[t.ply] = t; turns.set(t.game_id, arr); },
     async getGame(id) { return games.get(id) || null; },
     async getTurns(id) { return (turns.get(id) || []).filter(Boolean); },
@@ -25,13 +29,9 @@ export function memoryStore() {
         .map(publicGame);
     },
     async stats(game) {
-      const out = { games: 0, jev_wins: 0, human_wins: 0, draws: 0 };
-      for (const g of games.values()) {
-        if (g.game !== game || g.backend !== "native" || !g.result) continue;
-        out.games++;
-        if (g.result === "jev_wins") out.jev_wins++; else if (g.result === "human_wins") out.human_wins++; else out.draws++;
-      }
-      return out;
+      const n = (r) => counters.get(`${game}|${r}`) || 0;
+      const out = { jev_wins: n("jev_wins"), human_wins: n("human_wins"), draws: n("draw") };
+      return { games: out.jev_wins + out.human_wins + out.draws, ...out };
     },
   };
 }
@@ -45,6 +45,10 @@ export function d1Store(db) {
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10)
          ON CONFLICT(id) DO UPDATE SET mode = ?3, model = COALESCE(?6, games.model), result = ?7, plies = ?8, ended_at = ?10`,
       ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.result ?? null, g.plies, g.created_at, g.ended_at ?? null).run();
+      // Counters keep stats() at three row reads instead of a scan; a game ends exactly once, so this runs once per game.
+      if (g.result && g.backend === "native") {
+        await db.prepare("INSERT INTO counters (game, result, n) VALUES (?1, ?2, 1) ON CONFLICT(game, result) DO UPDATE SET n = n + 1").bind(g.game, g.result).run();
+      }
     },
     async addTurn(t) {
       await db.prepare(
@@ -72,9 +76,7 @@ export function d1Store(db) {
       return results.map(publicGame);
     },
     async stats(game) {
-      const { results } = await db.prepare(
-        "SELECT result, COUNT(*) AS n FROM games WHERE game = ?1 AND backend = 'native' AND result IS NOT NULL GROUP BY result",
-      ).bind(game).all();
+      const { results } = await db.prepare("SELECT result, n FROM counters WHERE game = ?1").bind(game).all();
       const out = { games: 0, jev_wins: 0, human_wins: 0, draws: 0 };
       for (const r of results) { out.games += r.n; if (r.result === "jev_wins") out.jev_wins += r.n; else if (r.result === "human_wins") out.human_wins += r.n; else out.draws += r.n; }
       return out;

@@ -560,10 +560,10 @@ function render(){
 }
 
 // ---- hall of fame ----
-async function loadLeaderboard(){
+async function loadLeaderboard(fresh){
   $("lbTitle").textContent=`Hall of fame · beat Jev at ${cfg.title.replace(/^Is Jev a (good|great) /,"").replace(/ player\?$/,"")}`;
   try{
-    const r=await fetch(`/api/leaderboard?game=${gameSel}`); const d=await r.json();
+    const r=await fetch(`/api/leaderboard?game=${gameSel}${fresh?"&t="+Date.now():""}`); const d=await r.json();
     if(!d.ok) throw new Error(d.error);
     const st=d.stats;
     $("lbstats").innerHTML=stat(st.games,"recorded games")+stat(st.jev_wins,"Jev wins")+stat(st.human_wins,"human wins")+stat(st.games?Math.round(100*st.human_wins/st.games)+"%":"–","humans win");
@@ -583,7 +583,7 @@ function renderClaim(){
 $("claimbtn").addEventListener("click",async()=>{
   const name=$("claimname").value.trim(); if(!name){ $("claimname").focus(); return; }
   $("claimbtn").disabled=true;
-  try{ const r=await fetch("/api/claim",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state:S.token,name})}); const d=await r.json(); if(!d.ok) throw new Error(d.error); S.claimed=d.name; renderClaim(); loadLeaderboard(); }
+  try{ const r=await fetch("/api/claim",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state:S.token,name})}); const d=await r.json(); if(!d.ok) throw new Error(d.error); S.claimed=d.name; renderClaim(); loadLeaderboard(true); }
   catch(e){ $("claimmsg").textContent="Could not record: "+e.message; $("claimbtn").disabled=false; }
 });
 

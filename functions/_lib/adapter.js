@@ -1,7 +1,7 @@
 // Pages Function adapters. A core handler returns { status, body, after? }; `after` is a function returning
 // a promise (record writes) that runs after the response via waitUntil.
-const json = (body, status) =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const json = (body, status, cacheSeconds = 0) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": cacheSeconds ? `public, max-age=${cacheSeconds}, s-maxage=${cacheSeconds}` : "no-store" } });
 
 export function adapt(handler) {
   return {
@@ -19,12 +19,12 @@ export function adapt(handler) {
 }
 
 // GET handlers: `handler(params, query, env) -> { status, body }`.
-export function adaptGet(handler) {
+export function adaptGet(handler, cacheSeconds = 0) {
   return {
     async onRequestGet({ request, env, params }) {
       const url = new URL(request.url);
       const r = await handler(params || {}, Object.fromEntries(url.searchParams), env);
-      return json(r.body, r.status);
+      return json(r.body, r.status, r.status === 200 ? cacheSeconds : 0);
     },
     onRequest() {
       return json({ ok: false, error: "GET only" }, 405);

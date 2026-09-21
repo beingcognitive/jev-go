@@ -32,3 +32,11 @@ CREATE TABLE IF NOT EXISTS turns (
   io TEXT,                     -- JSON { request, response }
   PRIMARY KEY (game_id, ply)
 );
+
+-- Per-game-type result counters, so the leaderboard's stats read three rows instead of scanning games.
+CREATE TABLE IF NOT EXISTS counters (
+  game TEXT NOT NULL,
+  result TEXT NOT NULL,
+  n INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (game, result)
+);
