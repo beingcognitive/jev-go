@@ -504,8 +504,9 @@ function render(){
   if(S.game==="go"){ sl=`Captures: X ${S.captures.X} · O ${S.captures.O}`; if(S.score){ const s=S.score; sl+=` · Black ${s.black} vs White ${s.white} (incl. komi ${s.komi}) → ${s.winner==="X"?"Black":"White"} by ${s.margin}`; } }
   $("scoreline").textContent=sl;
   const be=S.backend; const badge=$("backend");
-  badge.textContent="backend: "+(be||"…"); badge.className="badge "+(be==="mock"?"mock":be?"live":"");
-  if(be==="mock") badge.title="No API key set: heuristic opponent, not Jev.";
+  const beLabel=(b)=> b==="native" ? "opponent: Jev, live" : b==="mock" ? "opponent: mock, no key" : "opponent: …";
+  badge.textContent=beLabel(be); badge.className="badge "+(be==="mock"?"mock":be?"live":"");
+  badge.title= be==="native" ? "The server is calling TypeSafe's Jev API for every move." : be==="mock" ? "No TYPESAFE_API_KEY on the server: a heuristic stand-in plays instead of Jev. Nothing is recorded." : "Resolves on the first move.";
   $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy; $("pass").disabled=locked;
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
   for(const b of $("modeseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===modeSel); b.setAttribute("aria-checked",b.dataset.v===modeSel); }
@@ -550,7 +551,7 @@ function render(){
   if(lastKey) S._animated=lastKey;
   renderIO();
 
-  $("alltimeTitle").textContent=`All games on this browser · backend: ${recordBackend}`;
+  $("alltimeTitle").textContent=`All games on this browser · ${recordBackend==="native"?"against Jev":"against the mock"}`;
   $("alltime").innerHTML=
     stat(score.games,"games")+stat(`${score.jev} · ${score.human} · ${score.draw}`,"Jev · you · draw")+stat(pct(score.jev,score.games),"Jev win rate")+
     stat(pct(score.agree,score.ranked),`heuristic #1 (${score.ranked})`)+

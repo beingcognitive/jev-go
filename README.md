@@ -112,7 +112,7 @@ wrangler.toml             Pages project config
 ## Backend selection
 
 With `TYPESAFE_API_KEY` set, every move is one `POST https://api.typesafe.ai/v1/systemone` with model
-`jev-latest`. Without it the server plays a heuristic stand-in and the page shows a `mock` badge, so the
+`jev-latest`. Without it the server plays a heuristic stand-in and the page badge reads "opponent: mock, no key" instead of "opponent: Jev, live", so the
 app runs locally with no key. `STATE_SECRET` optionally signs the chess state tokens; it defaults to the API key.
 
 ## Run locally
