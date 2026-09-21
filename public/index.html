@@ -636,7 +636,8 @@ const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String
 
 function renderIO(){
   const calls=S.turns.filter(t=>t.io).length; $("callcnt").textContent=calls?`(${calls})`:"";
-  $("calls").hidden=!S.turns.length; // the section appears with the first call
+  $("calls").hidden=!S.turns.length; // the section appears with the first call, and so does the whole scoresheet
+  document.querySelector(".more").hidden=!S.turns.length&&S.status!=="replay";
   if(!S.turns.length){ $("iolog").innerHTML=""; ioBuiltFor=0; return; }
   if(ioBuiltFor===S.turns.length) return; // nothing new: keep the reader's scroll and selection
   ioBuiltFor=S.turns.length;
