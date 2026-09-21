@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Is Jev a good Gomoku player?</title>
-<meta name="description" content="Play Gomoku against TypeSafe's Jev. Code does the perception, Jev does the judgment, and every API call is shown.">
+<title>Jev plays Gomoku and Go</title>
+<meta name="description" content="Is Jev a good Gomoku player? Is Jev a great Go player? Play TypeSafe's System One decision model, with every API call shown.">
 <style>
 :root{
   --bg:#f6f1e7; --panel:#fffaf0; --ink:#1f1a14; --muted:#6b6257; --border:#e5d9c3;
@@ -30,13 +30,13 @@ h1{font-size:22px;margin:0 0 4px}
 main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:start}
 @media (max-width:860px){main{grid-template-columns:1fr}}
 .boardwrap{background:linear-gradient(135deg,var(--wood),var(--wood2));padding:10px 10px 12px 6px;border-radius:10px;display:inline-block;box-shadow:0 8px 24px rgba(0,0,0,.18)}
-.grid{display:grid;grid-template-columns:22px repeat(15,var(--cell));grid-template-rows:18px repeat(15,var(--cell))}
+.grid{display:grid}
 .lbl{font-size:11px;color:var(--lbl);display:flex;align-items:center;justify-content:center;user-select:none}
 .cell{position:relative;cursor:pointer}
 .cell::before{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:var(--line);transform:translateY(-.5px)}
 .cell::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-.5px)}
-.cell.c0::before{left:50%}.cell.c14::before{right:50%}
-.cell.r0::after{top:50%}.cell.r14::after{bottom:50%}
+.cell.edge-l::before{left:50%}.cell.edge-r::before{right:50%}
+.cell.edge-t::after{top:50%}.cell.edge-b::after{bottom:50%}
 .cell.locked{cursor:default}
 .dot{position:absolute;left:50%;top:50%;width:5px;height:5px;background:var(--line);border-radius:50%;transform:translate(-50%,-50%);z-index:1}
 .stone{position:absolute;inset:10%;border-radius:50%;z-index:3;box-shadow:0 1px 3px rgba(0,0,0,.45)}
@@ -50,6 +50,7 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
 .panel h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .status{font-size:17px;font-weight:600;min-height:24px}
+.scoreline{font-size:14px;color:var(--muted);margin-top:4px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 button,select{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);cursor:pointer}
 button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -67,7 +68,7 @@ th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--pan
 .kv b{font-weight:600;color:var(--muted)}
 .opts{margin:6px 0 0;padding:0;list-style:none;font-size:13px}
 .opts li{padding:2px 0;border-bottom:1px dashed var(--border)}
-.opts .k{font-weight:700;display:inline-block;min-width:34px}
+.opts .k{font-weight:700;display:inline-block;min-width:38px}
 .opts .p{color:var(--accent);font-weight:600;display:inline-block;min-width:40px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
 .stat{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px}
@@ -85,17 +86,25 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
 </head>
 <body>
 <header>
-  <h1>Is Jev a good Gomoku player?</h1>
-  <div class="sub">You play against TypeSafe's Jev, a System One model with no lookahead. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.</div>
+  <h1 id="title">Is Jev a good Gomoku player?</h1>
+  <div class="sub" id="sub"></div>
 </header>
 <main>
-  <div><div class="boardwrap"><div class="grid" id="grid" aria-label="Gomoku board"></div></div></div>
+  <div><div class="boardwrap"><div class="grid" id="grid" aria-label="board"></div></div></div>
   <div>
     <div class="panel">
       <div class="status" id="status"></div>
+      <div class="scoreline" id="scoreline"></div>
       <div class="row">
+        <label class="toggle">Game
+          <select id="game">
+            <option value="gomoku">Gomoku 15×15</option>
+            <option value="go">Go 9×9</option>
+          </select>
+        </label>
         <button class="primary" id="newgame">New game · you start</button>
         <button id="jevopens">New game · Jev starts</button>
+        <button id="pass" hidden>Pass</button>
         <span class="badge" id="backend">backend: …</span>
       </div>
       <div class="row">
@@ -119,7 +128,7 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
       <h2>This game</h2>
       <div class="stats" id="gamestats"></div>
       <div class="tablewrap"><table>
-        <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th>Win detect</th><th>Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
+        <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th id="h1">Win detect</th><th id="h2">Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
         <tbody id="turns"></tbody>
       </table></div>
     </div>
@@ -134,42 +143,54 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
     </div>
   </div>
 </main>
-<footer>Blue discs are Jev's top-5 probabilities. Thin blue rings are the candidate pool code offered in Player mode. A dashed red ring marks a forced point Jev missed in Naked or Assisted mode. "Via" says who decided: forced-win, forced-block and open-four are played by code with no call; best is Jev's pick. "Heur." is where Jev's pick ranked in the code heuristic's ordering.</footer>
+<footer>Blue discs are Jev's top-5 probabilities. Thin blue rings are the candidate pool code offered in Player mode. A dashed red ring marks a point code identified that Jev missed in Naked or Assisted mode. "Via" says who decided: moves labelled forced or only-move are played by code with no call; best is Jev's pick. "Heur." is where Jev's pick ranked in the code heuristic's ordering.</footer>
 <script>
-const SIZE=15, COLS="ABCDEFGHIJKLMNO", LS="jev-gomoku-v2", LSMODE="jev-gomoku-mode";
+const CFG={
+  gomoku:{ title:"Is Jev a good Gomoku player?", sub:"15×15, five in a row. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
+    size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cell:"min(5.6vw,34px)", endpoint:"/api/move",
+    q1:"win_now", q2:"must_block", t1:"win", t2:"block", h1:"Win detect", h2:"Block detect", l1:"wins found", l2:"forced blocks found", pass:false, ls:"jev-gomoku-v2" },
+  go:{ title:"Is Jev a great Go player?", sub:"9×9 Go, area scoring, komi 7.5, positional superko. Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Dead stones are not removed at the end, so capture them before passing.",
+    size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(9vw,54px)", endpoint:"/api/go",
+    q1:"capture_now", q2:"must_save", t1:"capture", t2:"save", h1:"Capture detect", h2:"Save detect", l1:"captures found", l2:"saves found", pass:true, ls:"jev-go-v1" },
+};
+const LSMODE="jev-gomoku-mode", LSGAME="jev-game";
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
-let S=null;
-
-const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
-function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(LS)||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
-function saveScore(){ try{ localStorage.setItem(LS,JSON.stringify(score)); }catch{} }
-let score=loadScore();
-try{ const m=localStorage.getItem(LSMODE); if(m) $("mode").value=m; }catch{}
+let S=null, cfg=CFG.gomoku, score=null;
+const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
+function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(cfg.ls)||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
+function saveScore(){ try{ localStorage.setItem(cfg.ls,JSON.stringify(score)); }catch{} }
+try{ const m=localStorage.getItem(LSMODE); if(m) $("mode").value=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) $("game").value=g; }catch{}
 const MODEHELP={
-  player:"Code plays forced wins and blocks and offers a ranked, annotated pool. Jev picks the move. This is the real player.",
-  assisted:"Every empty point is an option with exact line facts. Jev answers win, block and best; claims are verified before being played.",
-  naked:"Every empty point is an option with no description. Measures Jev alone."
+  player:"Code plays forced moves and offers a ranked, annotated pool. Jev picks the move. This is the real player.",
+  assisted:"Every legal point is an option with exact facts computed by code. Jev answers all three questions; claims are verified before being played.",
+  naked:"Every legal point is an option with no description. Measures Jev alone."
 };
 
 function newGame(jev){
-  S={ board:Array.from({length:SIZE},()=>".".repeat(SIZE)), moves:[], jev, human: jev==="O"?"X":"O",
-      status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, gameCounted:false };
+  cfg=CFG[$("game").value]; score=loadScore();
+  const empty=Array.from({length:cfg.size},()=>".".repeat(cfg.size));
+  S={ game:$("game").value, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false };
+  buildGrid();
 }
-function counts(){ let X=0,O=0; for(const r of S.board) for(const ch of r){ if(ch==="X")X++; else if(ch==="O")O++; } return {X,O}; }
-function toMove(){ const {X,O}=counts(); return X===O?"X":"O"; }
-function keyOf(r,c){ return COLS[c]+(SIZE-r); }
+function toMove(){ return S.moves.length%2===0?"X":"O"; }
+function keyOf(r,c){ return cfg.cols[c]+(cfg.size-r); }
 
 function buildGrid(){
   gridEl.innerHTML="";
+  gridEl.style.setProperty("--cell",cfg.cell);
+  gridEl.style.gridTemplateColumns=`22px repeat(${cfg.size}, var(--cell))`;
+  gridEl.style.gridTemplateRows=`18px repeat(${cfg.size}, var(--cell))`;
   gridEl.appendChild(Object.assign(document.createElement("div"),{className:"lbl"}));
-  for(let c=0;c<SIZE;c++){ const d=document.createElement("div"); d.className="lbl"; d.textContent=COLS[c]; gridEl.appendChild(d); }
-  for(let r=0;r<SIZE;r++){
-    const rl=document.createElement("div"); rl.className="lbl"; rl.textContent=SIZE-r; gridEl.appendChild(rl);
-    for(let c=0;c<SIZE;c++){
+  for(let c=0;c<cfg.size;c++){ const d=document.createElement("div"); d.className="lbl"; d.textContent=cfg.cols[c]; gridEl.appendChild(d); }
+  const stars=new Set(cfg.stars.map(([r,c])=>r*cfg.size+c));
+  for(let r=0;r<cfg.size;r++){
+    const rl=document.createElement("div"); rl.className="lbl"; rl.textContent=cfg.size-r; gridEl.appendChild(rl);
+    for(let c=0;c<cfg.size;c++){
       const cell=document.createElement("div");
-      cell.className=`cell r${r} c${c}`; cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=keyOf(r,c); cell.title=keyOf(r,c);
-      if([3,7,11].includes(r)&&[3,7,11].includes(c)){ const dot=document.createElement("span"); dot.className="dot"; cell.appendChild(dot); }
+      cell.className="cell"+(c===0?" edge-l":"")+(c===cfg.size-1?" edge-r":"")+(r===0?" edge-t":"")+(r===cfg.size-1?" edge-b":"");
+      cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=keyOf(r,c); cell.title=keyOf(r,c);
+      if(stars.has(r*cfg.size+c)){ const dot=document.createElement("span"); dot.className="dot"; cell.appendChild(dot); }
       cell.addEventListener("click",()=>onCell(r,c));
       gridEl.appendChild(cell);
     }
@@ -185,11 +206,13 @@ function onCell(r,c){
 async function play(humanMove){
   S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
   try{
-    const r=await fetch("/api/move",{method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({board:S.board,moves:S.moves,humanMove,jev:S.jev,mode:$("mode").value})});
+    const body={moves:S.moves,humanMove,jev:S.jev,mode:$("mode").value};
+    if(S.game==="gomoku") body.board=S.board;
+    const r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend;
+    if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); }
     if(S.status!=="playing") finishGame();
   }catch(e){ $("err").textContent=e.message; }
@@ -202,10 +225,10 @@ function addTurnToScore(t){
   else score.forced++;
   if(t.heuristicRank){ score.ranked++; if(t.heuristicRank===1) score.agree++; }
   if(t.verdict){
-    if(t.truth.win.length){ score.winOpp++; if(t.verdict.win==="found") score.winFound++; }
-    if(t.truth.block.length){ score.blockNeed++; if(t.verdict.block==="found") score.blockFound++; }
-    if(t.verdict.win==="false") score.falseClaims++;
-    if(t.verdict.block==="false") score.falseClaims++;
+    const T1=t.truth[cfg.t1]||[], T2=t.truth[cfg.t2]||[], V1=t.verdict[cfg.t1], V2=t.verdict[cfg.t2];
+    if(T1.length){ score.q1Opp++; if(V1==="found") score.q1Found++; }
+    if(T2.length){ score.q2Need++; if(V2==="found") score.q2Found++; }
+    if(V1==="false") score.falseClaims++; if(V2==="false") score.falseClaims++;
   }
   saveScore();
 }
@@ -229,11 +252,11 @@ const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String
 
 function renderIO(){
   const calls=S.turns.map((t,i)=>({t,i})).filter(x=>x.t.io);
-  if(!calls.length){ $("iolog").innerHTML=`<span class="na">No calls yet${S.turns.length?" (all moves so far were forced by code)":""}.</span>`; return; }
+  if(!calls.length){ $("iolog").innerHTML=`<span class="na">No calls yet${S.turns.length?" (all moves so far were played by code)":""}.</span>`; return; }
   $("iolog").innerHTML=calls.map(({t,i},idx)=>{
     const open= idx===calls.length-1 ? " open" : "";
     const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
-    return `<details class="io"${open}><summary>Move ${i+1} · played ${t.move} via ${t.source} · ${t.latencyMs} ms · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out":"tokens n/a"} · request ${(req.length/1024).toFixed(1)} KB</summary>
+    return `<details class="io"${open}><summary>Move ${i+1} · played ${esc(t.move)} via ${esc(t.source)} · ${t.latencyMs} ms · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out":"tokens n/a"} · request ${(req.length/1024).toFixed(1)} KB</summary>
       <div class="body">
         <h3>Request → ${esc(t.model||"")} <button class="small" data-copy="req-${i}">copy</button></h3><pre id="req-${i}">${esc(req)}</pre>
         <h3>Response <button class="small" data-copy="res-${i}">copy</button></h3><pre id="res-${i}">${esc(res)}</pre>
@@ -245,14 +268,15 @@ function renderIO(){
 }
 
 function render(){
+  $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2;
+  $("pass").hidden=!cfg.pass;
   const lastKey=S.moves.length? S.moves[S.moves.length-1].split(" ")[1] : null;
   const heat={}; let pmax=0; const candSet=new Set();
-  if(S.last&&S.last.answers){ for(const [k,p] of S.last.answers.best_move.top){ heat[k]=p; pmax=Math.max(pmax,p); } }
+  if(S.last&&S.last.answers){ for(const [k,p] of S.last.answers.best_move.top){ if(k==="pass") continue; heat[k]=p; pmax=Math.max(pmax,p); } }
   if(S.last&&S.last.candidates) for(const c of S.last.candidates) candSet.add(c.key);
   const truthRing=new Set();
   if(S.last&&S.last.verdict){
-    if(S.last.verdict.win!=="found"&&S.last.truth.win.length) S.last.truth.win.forEach(k=>truthRing.add(k));
-    if(S.last.verdict.block!=="found"&&S.last.truth.block.length) S.last.truth.block.forEach(k=>truthRing.add(k));
+    for(const t of [cfg.t1,cfg.t2]) if(S.last.verdict[t]!=="found"&&(S.last.truth[t]||[]).length) S.last.truth[t].forEach(k=>truthRing.add(k));
   }
   const locked=S.busy||S.status!=="playing"||toMove()!==S.human;
   for(const cell of gridEl.querySelectorAll(".cell")){
@@ -274,65 +298,72 @@ function render(){
   const you=S.human==="X"?"X (black)":"O (white)";
   let msg;
   if(S.busy) msg="Jev is thinking…";
-  else if(S.status==="human_wins") msg="You win. Five in a row.";
-  else if(S.status==="jev_wins") msg="Jev wins.";
+  else if(S.status==="human_wins") msg= S.game==="go" ? "Game over. You win." : "You win. Five in a row.";
+  else if(S.status==="jev_wins") msg= S.game==="go" ? "Game over. Jev wins." : "Jev wins.";
   else if(S.status==="draw") msg="Draw. Board full.";
-  else msg=`Your move. You are ${you}.`;
+  else msg=`Your move. You are ${you}.`+(lastKey==="pass"?" Jev passed.":"");
   $("status").textContent=msg;
+  let sl="";
+  if(S.game==="go"){ sl=`Captures: X ${S.captures.X} · O ${S.captures.O}`; if(S.score){ const s=S.score; sl+=` · Black ${s.black} vs White ${s.white} (incl. komi ${s.komi}) → ${s.winner==="X"?"Black":"White"} by ${s.margin}`; } }
+  $("scoreline").textContent=sl;
   const be=S.backend; const badge=$("backend");
   badge.textContent="backend: "+(be||"…"); badge.className="badge "+(be==="mock"?"mock":be?"live":"");
   if(be==="mock") badge.title="No API key set: heuristic opponent, not Jev.";
-  $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy;
+  $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy; $("pass").disabled=locked; $("game").disabled=S.busy;
   $("modehelp").textContent=MODEHELP[$("mode").value]||"";
 
   const t=S.last;
   if(t){
     const rows=[];
-    rows.push(`<b>played</b><span>${t.move} via <strong>${t.source}</strong>${t.answers?"":" (code, no Jev call)"}${t.heuristicRank?` · heuristic rank #${t.heuristicRank}`:""}${t.note?` · ${esc(t.note)}`:""}</span>`);
-    if(t.answers&&t.answers.win_now){
-      rows.push(`<b>win_now</b><span>${t.answers.win_now.choice} · conf ${t.answers.win_now.confidence} · ${verdictCell(t.verdict.win,t.truth.win.length)}${t.truth.win.length?` · truth: ${t.truth.win.join(" ")}`:""}</span>`);
-      rows.push(`<b>must_block</b><span>${t.answers.must_block.choice} · conf ${t.answers.must_block.confidence} · ${verdictCell(t.verdict.block,t.truth.block.length)}${t.truth.block.length?` · truth: ${t.truth.block.join(" ")}`:""}</span>`);
+    rows.push(`<b>played</b><span>${esc(t.move)} via <strong>${esc(t.source)}</strong>${t.answers?"":" (code, no Jev call)"}${t.heuristicRank?` · heuristic rank #${t.heuristicRank}`:""}${t.note?` · ${esc(t.note)}`:""}</span>`);
+    if(t.answers&&t.answers[cfg.q1]){
+      for(const [q,tk] of [[cfg.q1,cfg.t1],[cfg.q2,cfg.t2]]){
+        const a=t.answers[q], T=t.truth[tk]||[];
+        rows.push(`<b>${q}</b><span>${esc(a.choice)} · conf ${a.confidence} · ${verdictCell(t.verdict[tk],T.length)}${T.length?` · truth: ${T.map(esc).join(" ")}`:""}</span>`);
+      }
     }
-    if(t.answers) rows.push(`<b>best_move</b><span>${t.answers.best_move.top.map(([k,p])=>`${k} ${Math.round(p*100)}%`).join(", ")} · conf ${t.answers.best_move.confidence}</span>`);
+    if(t.answers) rows.push(`<b>best_move</b><span>${t.answers.best_move.top.map(([k,p])=>`${esc(k)} ${Math.round(p*100)}%`).join(", ")} · conf ${t.answers.best_move.confidence}</span>`);
     rows.push(`<b>call</b><span>${t.answers?`${t.latencyMs} ms · ${t.optionCount} options · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out tokens":"tokens n/a"} · ${esc(t.model||"")}`:"none"}</span>`);
     $("thought").innerHTML=rows.join("");
     if(t.candidates&&t.candidates.length){
       const probs=Object.fromEntries((t.answers?t.answers.best_move.top:[]));
-      $("opts").innerHTML=t.candidates.map(c=>`<li><span class="k">${c.key}</span> <span class="p">${probs[c.key]!==undefined?Math.round(probs[c.key]*100)+"%":""}</span> <span class="na">#${c.rank}</span> ${esc(c.desc)}</li>`).join("");
+      $("opts").innerHTML=t.candidates.map(c=>`<li><span class="k">${esc(c.key)}</span> <span class="p">${probs[c.key]!==undefined?Math.round(probs[c.key]*100)+"%":""}</span> <span class="na">${c.rank?"#"+c.rank:""}</span> ${esc(c.desc)}</li>`).join("");
     } else $("opts").innerHTML="";
   } else { $("thought").innerHTML=`<span class="na">No move yet.</span>`; $("opts").innerHTML=""; }
 
-  const g={moves:S.turns.length,calls:0,forced:0,agree:0,ranked:0,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
+  const g={moves:S.turns.length,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
   for(const x of S.turns){
     if(x.answers){ g.calls++; g.latency+=x.latencyMs||0; if(x.usage&&typeof x.usage.input==="number"){ g.tokens+=x.usage.input; g.tokenCalls++; } } else g.forced++;
     if(x.heuristicRank){ g.ranked++; if(x.heuristicRank===1) g.agree++; }
     if(x.verdict){
-      if(x.truth.win.length){ g.winOpp++; if(x.verdict.win==="found") g.winFound++; }
-      if(x.truth.block.length){ g.blockNeed++; if(x.verdict.block==="found") g.blockFound++; }
-      if(x.verdict.win==="false") g.falseClaims++; if(x.verdict.block==="false") g.falseClaims++;
+      const T1=x.truth[cfg.t1]||[], T2=x.truth[cfg.t2]||[];
+      if(T1.length){ g.q1Opp++; if(x.verdict[cfg.t1]==="found") g.q1Found++; }
+      if(T2.length){ g.q2Need++; if(x.verdict[cfg.t2]==="found") g.q2Found++; }
+      if(x.verdict[cfg.t1]==="false") g.falseClaims++; if(x.verdict[cfg.t2]==="false") g.falseClaims++;
     }
   }
   $("gamestats").innerHTML=
-    stat(g.moves,"Jev moves")+stat(g.forced,"forced by code")+stat(g.calls,"Jev calls")+
-    stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
-    stat(`${g.winFound}/${g.winOpp}`,"wins found")+stat(`${g.blockFound}/${g.blockNeed}`,"forced blocks found")+
+    stat(g.moves,"Jev moves")+stat(g.forced,"played by code")+stat(g.calls,"Jev calls")+stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
+    stat(`${g.q1Found}/${g.q1Opp}`,cfg.l1)+stat(`${g.q2Found}/${g.q2Need}`,cfg.l2)+
     stat(g.calls?Math.round(g.latency/g.calls):"–","avg ms per call")+stat(g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","avg input tokens");
-  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${x.move}</td><td>${x.source}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict.win,x.truth.win.length)}</td><td>${verdictCell(x.verdict&&x.verdict.block,x.truth.block.length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${x.usage&&x.usage.input!=null?x.usage.input:"–"}</td></tr>`).join("");
+  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t1],(x.truth[cfg.t1]||[]).length)}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t2],(x.truth[cfg.t2]||[]).length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${x.usage&&x.usage.input!=null?x.usage.input:"–"}</td></tr>`).join("");
   renderIO();
 
   $("alltime").innerHTML=
     stat(score.games,"games")+stat(`${score.jev} · ${score.human} · ${score.draw}`,"Jev · you · draw")+stat(pct(score.jev,score.games),"Jev win rate")+
     stat(pct(score.agree,score.ranked),`heuristic #1 (${score.ranked})`)+
-    stat(pct(score.winFound,score.winOpp),`wins found (${score.winOpp})`)+stat(pct(score.blockFound,score.blockNeed),`blocks found (${score.blockNeed})`)+
+    stat(pct(score.q1Found,score.q1Opp),`${cfg.l1} (${score.q1Opp})`)+stat(pct(score.q2Found,score.q2Need),`${cfg.l2} (${score.q2Need})`)+
     stat(score.calls?Math.round(score.latency/score.calls):"–","avg ms per call");
 }
 
 $("newgame").addEventListener("click",()=>{ newGame("O"); render(); });
 $("jevopens").addEventListener("click",()=>{ newGame("X"); render(); play(null); });
+$("pass").addEventListener("click",()=>{ if(S.game==="go") play("pass"); });
 $("resetscore").addEventListener("click",()=>{ score={...DEFAULT_SCORE}; saveScore(); render(); });
 $("mode").addEventListener("change",()=>{ try{ localStorage.setItem(LSMODE,$("mode").value); }catch{} render(); });
+$("game").addEventListener("change",()=>{ try{ localStorage.setItem(LSGAME,$("game").value); }catch{} newGame("O"); render(); });
 
-buildGrid(); newGame("O"); render();
+newGame("O"); render();
 </script>
 </body>
 </html>

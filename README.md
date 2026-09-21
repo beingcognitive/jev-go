@@ -1,8 +1,12 @@
-# Is Jev a good Gomoku player?
+# jev-go — Is Jev a good Gomoku player? Is Jev a great Go player?
 
-A one-page experiment: you play Gomoku (15×15, five in a row) against **Jev**, TypeSafe AI's
-System One decision model, and the page keeps score of how often Jev finds immediate wins and
-forced blocks. Hosted on **Cloudflare Pages** with one Pages Function.
+**Live:** https://jev-go.chardonn.ai
+
+Play 15×15 Gomoku or 9×9 Go against **Jev**, TypeSafe AI's System One decision model.
+Code does the perception, Jev does the judgment, and every API call is shown on the page.
+Hosted on **Cloudflare Pages** with two Pages Functions.
+
+![Gomoku board with Jev's candidate pool and probabilities](docs/img/gomoku-board.png)
 
 ## Three modes
 
@@ -20,12 +24,42 @@ and cost no call.
 Every Jev call's full request payload and raw response are shown in the **Jev API calls**
 panel, one expandable entry per move, with copy buttons.
 
+## Go 9×9
+
+The same three modes apply. Code implements captures, suicide, **positional superko**, area
+scoring (Chinese rules, komi 7.5) and two-pass game end, replaying the move list on every
+request so the history is authoritative. For every legal point it computes what the move
+captures, saves, threatens (atari), connects, whether it is self-atari or fills an own eye,
+the line, and the liberties left, and ranks them.
+
+- **Player**: Jev picks from the top ~12 annotated points; `pass` is offered only after the
+  opponent passed, when nothing scores, or near the 200-move cap.
+- **Assisted / Naked**: every legal point plus `pass`; questions are `capture_now`,
+  `must_save` and `best_move`, verified against code truth before being played.
+
+Dead stones are not removed at the end, so capture them before passing.
+
+## Screenshots
+
+Player mode, Jev (white) wins a Gomoku game. Right panel: the last call, per-move table
+with where Jev's pick ranked in the heuristic, and the API log.
+
+![Jev's last thought, per-move table and stats](docs/img/gomoku-thought.png)
+
+Every call, expandable, with the exact request and Jev's raw response:
+
+![Jev API calls panel](docs/img/gomoku-api-log.png)
+
 ## Layout
 
 ```
-functions/api/move.js     Cloudflare Pages Function: POST /api/move
+functions/api/move.js     Pages Function: POST /api/move (Gomoku)
+functions/api/go.js       Pages Function: POST /api/go   (Go 9×9)
 functions/_lib/move.js    runtime-agnostic core (prompt build, Jev call, verify, decide)
-functions/_lib/gomoku.js  threat engine, candidate ranking, option descriptions
+functions/_lib/gomoku.js  Gomoku threat engine, candidate ranking, descriptions
+functions/_lib/go.js      Go engine: groups, captures, superko, scoring, annotations
+functions/_lib/go_move.js Go handler core
+functions/_lib/jev.js     shared Jev transport (native / Vercel Gateway / mock)
 public/index.html         the page
 dev.mjs                   plain Node dev server (no wrangler needed)
 test.mjs                  node:test suite

@@ -6,19 +6,14 @@
 
 import * as G from "./gomoku.js";
 
-const NATIVE_URL = "https://api.typesafe.ai/v1/systemone";
-const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/evaluate";
+import { backend, ask as askJev, mockFromScores, readAnswer as readAnswerShared, pack, verdict } from "./jev.js";
+export { backend };
+
 const RULES =
   "Gomoku on a 15x15 board. Five in a row wins. X is black, O is white, . is empty. " +
   "Coordinates are column letter A-O then row number 1-15.";
 export const MODES = ["player", "assisted", "naked"];
 
-export function backend(env = {}) {
-  if (env.TYPESAFE_API_KEY) return { kind: "native", key: env.TYPESAFE_API_KEY };
-  if (env.AI_GATEWAY_API_KEY) return { kind: "gateway", key: env.AI_GATEWAY_API_KEY };
-  return { kind: "mock" };
-}
-const modelFor = (be) => (be.kind === "native" ? "jev-latest" : be.kind === "gateway" ? "typesafe-ai/jev" : "mock-heuristic");
 
 function baseState(board, moves, me) {
   return { game: RULES, you_are: me, to_move: me, board: G.render(board).split("\n"), recent_moves: moves.slice(-12) };
@@ -96,29 +91,6 @@ export function buildPlayerRequest(board, moves, me, opp, plan) {
   return { state, questions, legal: new Set(Object.keys(criteria)) };
 }
 
-async function callJev(be, payload) {
-  const url = be.kind === "native" ? NATIVE_URL : GATEWAY_URL;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { authorization: `Bearer ${be.key}`, "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const text = await r.text();
-  if (!r.ok) {
-    const e = new Error(`${be.kind} upstream ${r.status}: ${text.slice(0, 300)}`);
-    e.status = 502;
-    throw e;
-  }
-  const data = JSON.parse(text);
-  const u = data.usage || {};
-  return {
-    answers: data.answers || {},
-    usage: { input: u.input_tokens ?? u.inputTokens ?? null, output: u.output_tokens ?? u.outputTokens ?? null },
-    model: data.model || payload.model,
-    raw: data,
-  };
-}
-
 // Heuristic stand-in when no key is configured. Imperfect on purpose, so the UI shows misses too.
 export function mockAnswers(board, me, opp, legal, truth, rng = Math.random, questions = null) {
   const pts = G.emptyPoints(board).filter((p) => legal.has(p.key));
@@ -150,18 +122,7 @@ export function mockAnswers(board, me, opp, legal, truth, rng = Math.random, que
   return out;
 }
 
-function readAnswer(a) {
-  const probs = (a && a.probabilities) || {};
-  const choice = (a && a.choice) ?? G.argmax(probs);
-  const conf = a && typeof a.confidence === "number" ? a.confidence : G.confidenceFrom(probs);
-  return { choice, conf, top: G.topK(probs, 5) };
-}
-function verdict(claim, truthArr) {
-  const set = new Set(truthArr);
-  if (set.size === 0) return claim === "none" ? "correct_none" : "false";
-  if (set.has(claim)) return "found";
-  return claim === "none" ? "missed" : "false";
-}
+const readAnswer = (a) => readAnswerShared(a, G.topK, G.confidenceFrom, G.argmax);
 // naked/assisted priority: verified win, else verified block, else best_move. A wrong claim falls through.
 export function decide(answers, truth, legal) {
   const win = readAnswer(answers.win_now);
@@ -176,7 +137,6 @@ export function decide(answers, truth, legal) {
   return { move, source, verdict: v, win, block, best };
 }
 
-const pack = (a) => ({ choice: a.choice, confidence: Number(a.conf.toFixed(3)), top: a.top.map(([k, v]) => [k, Number(v.toFixed(4))]) });
 const reply = (status, body) => ({ status, body });
 export function normalizeMode(mode, assist) {
   if (MODES.includes(mode)) return mode;
@@ -185,19 +145,8 @@ export function normalizeMode(mode, assist) {
   return "player";
 }
 
-async function ask(be, board, me, opp, legal, truth, state, questions) {
-  const payload = { model: modelFor(be), state, questions };
-  const t0 = Date.now();
-  let answers, usage = null, model = payload.model, raw;
-  if (be.kind === "mock") {
-    answers = mockAnswers(board, me, opp, legal, truth, Math.random, questions);
-    await new Promise((r) => setTimeout(r, 60));
-    raw = { model, answers, usage: null, note: "mock backend: no API call was made" };
-  } else {
-    ({ answers, usage, model, raw } = await callJev(be, payload));
-  }
-  return { answers, usage, model, latencyMs: Date.now() - t0, io: { request: payload, response: raw } };
-}
+const ask = (be, board, me, opp, legal, truth, state, questions) =>
+  askJev(be, state, questions, () => mockAnswers(board, me, opp, legal, truth, Math.random, questions));
 
 export async function handleMove(body, env = {}) {
   try {
@@ -232,6 +181,13 @@ export async function handleMove(body, env = {}) {
           move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, mode,
           latencyMs: 0, usage: null, model: null, optionCount: 0, truth, verdict: null, answers: null,
           candidates: plan.cands ? plan.cands.top.map(slim) : [], heuristicRank: null, io: null,
+        };
+      } else if (plan.pool.length < 2) {
+        const only = plan.pool[0];
+        info = {
+          move: only.key, source: "only-move", note: plan.oppThreatens ? `${opp} threatens an open four; ${only.key} is the single answer` : "single candidate", mode,
+          latencyMs: 0, usage: null, model: null, optionCount: 1, truth, verdict: null, answers: null,
+          candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === only.key) + 1, io: null,
         };
       } else {
         const { state, questions, legal } = buildPlayerRequest(board, mv, me, opp, plan);

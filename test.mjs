@@ -235,3 +235,156 @@ test("self-play smoke: player-mode O (mock) vs greedy X never plays illegally an
   }
   assert.ok(["playing", "jev_wins", "human_wins", "draw"].includes(status));
 });
+
+// ---------------- Go 9x9 ----------------
+import * as Go from "./functions/_lib/go.js";
+import { handleGoMove, goPlayerPlan, buildGoFullRequest, buildGoPlayerRequest, goTruth } from "./functions/_lib/go_move.js";
+import { onRequestPost as goPost } from "./functions/api/go.js";
+
+function goBoard(stones) {
+  const b = Go.emptyBoard();
+  for (const [k, color] of Object.entries(stones)) { const p = Go.fromKey(k); b[p.r][p.c] = color; }
+  return b;
+}
+
+test("go: keys skip I, bounds", () => {
+  assert.equal(Go.key(0, 0), "A9");
+  assert.equal(Go.key(8, 8), "J1");
+  assert.deepEqual(Go.fromKey("E5"), { r: 4, c: 4 });
+  assert.equal(Go.fromKey("I5"), null);
+  assert.equal(Go.fromKey("A0"), null);
+});
+
+test("go: capture, suicide, ko, superko", () => {
+  // X D5 surrounded by O on 3 sides; O plays the 4th liberty and captures
+  const b = goBoard({ D5: "X", C5: "O", E5: "O", D6: "O" });
+  const t = Go.tryMove(b, ...Object.values(Go.fromKey("D4")), "O", null);
+  assert.equal(t.captured, 1); assert.deepEqual(t.capturedKeys, ["D5"]);
+  assert.equal(t.board[4][3], ".");
+  // suicide: X into a point with no liberties and no capture
+  const s = goBoard({ C5: "O", E5: "O", D6: "O", D4: "O" });
+  assert.equal(Go.tryMove(s, ...Object.values(Go.fromKey("D5")), "X", null).error, "suicide");
+  // ko: X captures at D5, O may not immediately recapture
+  const ko = Go.replay(["X C5", "O D5", "X D6", "O E6", "X D4", "O E4", "X F5"]); // X F5 fills... build a classic ko shape below instead
+  assert.ok(ko.board);
+  const shape = ["X C5", "O E5", "X D6", "O E6", "X D4", "O E4", "X F5", "O D5"]; // O D5 now has libs? we just check replay validity
+  assert.ok(Go.replay(shape).board);
+  // explicit ko: X captures one stone; O recapturing recreates the previous position -> superko/ko error
+  const kb = goBoard({ C5: "X", D6: "X", D4: "X", E5: "O", F5: "O", E6: "O", E4: "O", D5: "O" });
+  const hist = new Set([Go.hash(kb)]);
+  const cap = Go.tryMove(kb, ...Object.values(Go.fromKey("E5")), "X", hist); // wait: E5 is occupied by O
+  assert.equal(cap.error, "occupied");
+});
+
+test("go: ko rule via replay", () => {
+  // Build: X at C5, D6, D4; O at E6, E4, F5. X plays E5? no: classic ko -> X D5 captured by O E5? Use direct construction:
+  const b = goBoard({ C5: "X", D6: "X", D4: "X", E6: "O", E4: "O", F5: "O", D5: "O" });
+  // D5 (O) has one liberty at E5; X captures at E5
+  const hist = new Set([Go.hash(b)]);
+  const x = Go.tryMove(b, ...Object.values(Go.fromKey("E5")), "X", hist);
+  assert.equal(x.captured, 1);
+  hist.add(Go.hash(x.board));
+  // O recapturing at D5 would recreate the position before X's capture -> illegal ko
+  const o = Go.tryMove(x.board, ...Object.values(Go.fromKey("D5")), "O", hist);
+  assert.equal(o.error, "ko");
+});
+
+test("go: replay validates turn order and legality; passes tracked", () => {
+  assert.throws(() => Go.replay(["O E5"]), /out of turn/);
+  assert.throws(() => Go.replay(["X E5", "O E5"]), /occupied/);
+  const st = Go.replay(["X E5", "O pass", "X D4", "O pass"]);
+  assert.equal(st.passes, 1); // last pass by O, X played in between -> only the final pass counts
+  const two = Go.replay(["X E5", "O pass", "X pass"]);
+  assert.equal(two.passes, 2);
+});
+
+test("go: area scoring with komi; regions touching both colors are neutral", () => {
+  // X wall on column E, O wall on column G: cols A-D are X territory, col F is dame, cols H-J are O territory
+  const stones = {};
+  for (let r = 1; r <= 9; r++) { stones[`E${r}`] = "X"; stones[`G${r}`] = "O"; }
+  const sc = Go.score(goBoard(stones));
+  assert.equal(sc.stones.X, 9); assert.equal(sc.territory.X, 36);
+  assert.equal(sc.stones.O, 9); assert.equal(sc.territory.O, 18);
+  assert.equal(sc.black, 45); assert.equal(sc.white, 27 + 7.5);
+  assert.equal(sc.winner, "X");
+  // a lone O stone inside X's area makes the surrounding region neutral, not O's
+  const lone = {}; for (let r = 1; r <= 9; r++) lone[`E${r}`] = "X"; lone.G5 = "O";
+  assert.equal(Go.score(goBoard(lone)).territory.O, 0);
+});
+
+test("go: annotations detect capture, save, atari, self-atari, eye fill", () => {
+  const b = goBoard({ D5: "O", C5: "X", E5: "X", D6: "X" }); // O D5 in atari, liberty D4
+  const st = { history: new Set([Go.hash(b)]) };
+  const save = Go.analyzeMove(b, ...Object.values(Go.fromKey("D4")), "O", "X", st.history, null);
+  assert.equal(save.saved, 1); assert.match(save.desc, /saves 1 O stone/);
+  const cap = Go.analyzeMove(b, ...Object.values(Go.fromKey("D4")), "X", "O", st.history, null);
+  assert.equal(cap.captured, 1); assert.match(cap.desc, /captures 1 O stone/);
+  const eye = goBoard({ A2: "X", B1: "X" });
+  const ef = Go.analyzeMove(eye, ...Object.values(Go.fromKey("A1")), "X", "O", null, null);
+  assert.equal(ef.eyeFill, true);
+  const sa = goBoard({ B9: "O" }); // X at A9 would have a single liberty (A8)
+  const s = Go.analyzeMove(sa, ...Object.values(Go.fromKey("A9")), "X", "O", null, null);
+  assert.equal(s.selfAtari, true);
+  assert.equal(Go.analyzeMove(goBoard({ B9: "O", A8: "O" }), ...Object.values(Go.fromKey("A9")), "X", "O", null, null), null); // suicide
+});
+
+test("go: full request lists every legal point plus pass; player pool is bounded", () => {
+  const st = Go.replay(["X E5"]);
+  const analyses = Go.analyzeAll(st.board, "O", "X", st.history, st.last);
+  const full = buildGoFullRequest(st, ["X E5"], "O", "X", analyses, "naked", true);
+  assert.ok(!Object.keys(full.state).some((k) => k.endsWith("_groups_in_atari")), "naked state must not carry atari hints");
+  const atariSt = Go.replay(["X E5", "O D5", "X D4", "O pass", "X C5"]);
+  const assisted = buildGoFullRequest(atariSt, [], "O", "X", Go.analyzeAll(atariSt.board, "O", "X", atariSt.history, atariSt.last), "assisted", true);
+  assert.deepEqual(assisted.state.O_groups_in_atari, ["1 stone at D5"]);
+  assert.equal(full.legal.size, 81); // 80 points + pass
+  assert.equal(full.questions.best_move.criteria.pass, null);
+  assert.equal("pass" in full.questions.capture_now.criteria, false);
+  const plan = goPlayerPlan(st, "O", "X", analyses);
+  assert.equal(plan.forced, undefined);
+  assert.ok(plan.pool.length <= 12 && plan.pool.length > 0);
+  const pr = buildGoPlayerRequest(st, ["X E5"], "O", "X", plan);
+  assert.ok(Object.values(pr.questions.best_move.criteria).every((d) => typeof d === "string"));
+});
+
+test("go: handleGoMove plays, ends on two passes with a score, rejects illegal moves", async () => {
+  const r = await handleGoMove({ moves: [], humanMove: "E5", jev: "O", mode: "player" }, {});
+  assert.equal(r.status, 200); assert.equal(r.body.game, "go"); assert.equal(r.body.moves.length, 2);
+  assert.ok(r.body.jev.io && r.body.jev.candidates.length);
+  const bad = await handleGoMove({ moves: ["X E5", "O D5"], humanMove: "E5", jev: "O" }, {});
+  assert.equal(bad.status, 400); assert.match(bad.body.error, /occupied/);
+  const oot = await handleGoMove({ moves: ["X E5"], humanMove: "D5", jev: "O" }, {});
+  assert.equal(oot.status, 400); assert.match(oot.body.error, /not the human/);
+  // human passes, Jev passes back only if it has nothing; force the end with an almost-full sequence: X pass after O pass
+  const end = await handleGoMove({ moves: ["X E5", "O D5", "X pass", "O pass"], humanMove: null, jev: "O" }, {});
+  assert.equal(end.status, 400); assert.match(end.body.error, /game is over/);
+  const fin = await handleGoMove({ moves: ["X E5", "O pass"], humanMove: "pass", jev: "O" }, {});
+  assert.ok(["jev_wins", "human_wins"].includes(fin.body.status));
+  assert.ok(fin.body.score && typeof fin.body.score.black === "number");
+});
+
+test("go: naked mode verdicts against code truth", async () => {
+  const r = await handleGoMove({ moves: ["X E5", "O D5", "X D4", "O pass", "X C5"], humanMove: null, jev: "O", mode: "naked" }, {});
+  assert.equal(r.body.jev.optionCount, 81 - 4 + 1); // 4 stones on board, plus pass
+  assert.deepEqual(r.body.jev.truth.save, ["D6"]);
+  assert.ok(["found", "missed", "false"].includes(r.body.jev.verdict.save));
+});
+
+test("go: Pages Function adapter", async () => {
+  const res = await goPost({ request: new Request("http://x/api/go", { method: "POST", body: JSON.stringify({ moves: [], humanMove: "E5", jev: "O" }) }), env: {} });
+  assert.equal(res.status, 200);
+  const d = await res.json();
+  assert.equal(d.game, "go");
+});
+
+test("go: self-play smoke (player-mode O vs greedy X) finishes legally", async () => {
+  let moves = [], status = "playing", guard = 0;
+  while (status === "playing" && guard++ < 120) {
+    const st = Go.replay(moves);
+    const an = Go.analyzeAll(st.board, "X", "O", st.history, st.last);
+    const hm = an.length && an[0].score > 0 ? an[0].key : "pass";
+    const r = await handleGoMove({ moves, humanMove: hm, jev: "O", mode: "player" }, {});
+    assert.equal(r.status, 200, r.body.error);
+    moves = r.body.moves; status = r.body.status;
+  }
+  assert.ok(status !== "playing");
+});

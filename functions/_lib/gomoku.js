@@ -229,9 +229,12 @@ export function describeCandidate(cand, me, opp) {
 // Ranked candidate list for `me`. Each entry: {key, r, c, me, opp, danger, forcing, score, desc}.
 export function candidates(board, me, opp, max = 12) {
   const near = nearPoints(board, 2);
-  const all = near.map((p) => {
-    const a = analyzeMove(board, p.r, p.c, me), b = analyzeMove(board, p.r, p.c, opp);
-    const danger = oppThreatAfter(board, p.r, p.c, me, opp, near);
+  const analyzed = near.map((p) => ({ p, a: analyzeMove(board, p.r, p.c, me), b: analyzeMove(board, p.r, p.c, opp) }));
+  // Adding a `me` stone can only remove `opp` options, so the opponent's threats after any of our
+  // moves are a subset of its threats now. Re-test only those points.
+  const oppThreats = analyzed.filter(({ b }) => b.counts.five || b.counts.open_four).map(({ p }) => p);
+  const all = analyzed.map(({ p, a, b }) => {
+    const danger = oppThreatAfter(board, p.r, p.c, me, opp, oppThreats);
     const forcing = FORCING.has(a.cls);
     const adj = adjacency(board, p.r, p.c);
     let score = VALUE[a.cls] + 0.9 * VALUE[b.cls] + adj * 3;
