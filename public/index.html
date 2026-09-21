@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jev plays Gomoku and Go</title>
-<meta name="description" content="Is Jev a good Gomoku, Go, or chess player? Play TypeSafe's System One decision model, with every API call shown.">
+<title>Can you beat Jev?</title>
+<meta name="description" content="Can you beat Jev at Gomoku, Go or chess? Play TypeSafe's System One decision model, with every API call shown.">
 <style>
 :root{
   --bg:#f6f1e7; --panel:#fffaf0; --ink:#1f1a14; --muted:#6b6257; --border:#e5d9c3;
@@ -132,7 +132,7 @@ a.link{color:var(--accent)}
 </head>
 <body>
 <header>
-  <h1 id="title">Is Jev a good Gomoku player?</h1>
+  <h1 id="title">Can you beat Jev at Gomoku?</h1>
   <div class="sub" id="sub"></div>
 </header>
 <main>
@@ -196,7 +196,7 @@ a.link{color:var(--accent)}
       <div id="iolog"><span class="na">No calls yet.</span></div>
     </div>
     <div class="panel">
-      <h2 id="lbTitle">Hall of fame · beat Jev</h2>
+      <h2 id="lbTitle">Hall of fame · people who beat Jev</h2>
       <div id="lbstats" class="stats"></div>
       <div class="tablewrap" id="lb"><span class="na">Loading…</span></div>
     </div>
@@ -210,13 +210,13 @@ a.link{color:var(--accent)}
 <footer>Blue discs are Jev's top-5 probabilities, sized by probability; the number on the last stone is the probability Jev gave the move it played. They fade when you start your move (Thoughts: Fade), or stay (Keep). Thin blue rings are the candidate pool code offered in Player mode. A dashed red ring marks a point code identified that Jev missed in Naked or Assisted mode. "Via" says who decided: moves labelled forced or only-move are played by code with no call; best is Jev's pick. "Heur." is where Jev's pick ranked in the code heuristic's ordering.</footer>
 <script>
 const CFG={
-  gomoku:{ title:"Is Jev a good Gomoku player?", sub:"15×15, five in a row. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
+  gomoku:{ title:"Can you beat Jev at Gomoku?", name:"Gomoku", sub:"15×15, five in a row. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
     size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cell:"min(5.6vw,34px)", endpoint:"/api/move",
     q1:"win_now", q2:"must_block", t1:"win", t2:"block", h1:"Win detect", h2:"Block detect", l1:"wins found", l2:"forced blocks found", pass:false, ls:"jev-gomoku-v2" },
-  go:{ title:"Is Jev a great Go player?", sub:"9×9 Go, area scoring, komi 7.5, positional superko. Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Dead stones are not removed at the end, so capture them before passing.",
+  go:{ title:"Can you beat Jev at Go?", name:"Go", sub:"9×9 Go, area scoring, komi 7.5, positional superko. Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Dead stones are not removed at the end, so capture them before passing.",
     size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(9vw,54px)", endpoint:"/api/go",
     q1:"capture_now", q2:"must_save", t1:"capture", t2:"save", h1:"Capture detect", h2:"Save detect", l1:"captures found", l2:"saves found", pass:true, ls:"jev-go-v1" },
-  chess:{ title:"Is Jev a good chess player?", sub:"Standard chess; rules from chess.js. Code annotates every legal move (captures, checks, what hangs, what it threatens, what the opponent could take back) and ranks them; Jev picks. Mate in one is played by code. Click a piece, then a square; pawns promote to a queen.",
+  chess:{ title:"Can you beat Jev at chess?", name:"chess", sub:"Standard chess; rules from chess.js. Code annotates every legal move (captures, checks, what hangs, what it threatens, what the opponent could take back) and ranks them; Jev picks. Mate in one is played by code. Click a piece, then a square; pawns promote to a queen.",
     size:8, cols:"abcdefgh", stars:[], cell:"min(10vw,58px)", endpoint:"/api/chess",
     q1:"mate_now", q2:"win_material", t1:"mate", t2:"material", h1:"Mate detect", h2:"Material detect", l1:"mates found", l2:"free captures found", pass:false, ls:"jev-chess-v1", chess:true },
 };
@@ -561,7 +561,7 @@ function render(){
 
 // ---- hall of fame ----
 async function loadLeaderboard(fresh){
-  $("lbTitle").textContent=`Hall of fame · beat Jev at ${cfg.title.replace(/^Is Jev a (good|great) /,"").replace(/ player\?$/,"")}`;
+  $("lbTitle").textContent=`Hall of fame · people who beat Jev at ${cfg.name}`;
   try{
     const r=await fetch(`/api/leaderboard?game=${gameSel}${fresh?"&t="+Date.now():""}`); const d=await r.json();
     if(!d.ok) throw new Error(d.error);

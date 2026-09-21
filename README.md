@@ -1,4 +1,4 @@
-# jev-go — Is Jev a good Gomoku, Go, or chess player?
+# jev-go — Can you beat Jev at Gomoku, Go or chess?
 
 **Live:** https://jev-go.chardonn.ai
 
