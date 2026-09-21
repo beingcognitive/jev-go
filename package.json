@@ -1,5 +1,5 @@
 {
-  "name": "hello-jev-gomoku",
+  "name": "jev-go",
   "private": true,
   "type": "module",
   "description": "Is Jev a good Gomoku player? Human vs TypeSafe Jev on Cloudflare Pages.",

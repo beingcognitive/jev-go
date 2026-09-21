@@ -55,12 +55,12 @@ npm run cf:dev                   # or the real Pages runtime via wrangler, http:
 
 ```bash
 npx wrangler login                                   # once
-npx wrangler pages deploy public                     # creates the project "hello-jev" on first run
+npx wrangler pages deploy public                     # creates the project "jev-go" on first run
 npx wrangler pages secret put TYPESAFE_API_KEY       # paste the key when prompted
 npx wrangler pages deploy public                     # deploy again so the secret is live
 ```
 
-The site lands at `https://hello-jev.pages.dev`. Until the secret is set, the deployed page runs
+The site lands at `https://jev-go.pages.dev`. Until the secret is set, the deployed page runs
 in mock mode.
 
 ## Cost
