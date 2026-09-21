@@ -1,98 +1,118 @@
-# jev-go — Can you beat Jev at Gomoku, Go or chess?
+# Beat Jev — can you beat a decision model at Gomoku, Go or chess?
 
 **Live:** https://jev-go.chardonn.ai
 
-Play 15×15 Gomoku, 9×9 Go or chess against **Jev**, TypeSafe AI's System One decision model.
-Code does the perception, Jev does the judgment, and every API call is shown on the page.
-Hosted on **Cloudflare Pages** with three Pages Functions, one per game.
+Play 15×15 Gomoku, 9×9 Go or chess against **Jev**, TypeSafe AI's System One decision model. Jev
+does not generate text: it takes a state and a typed question with a list of options and returns one
+choice with a probability for every option. Code does the perception, Jev does the judgment, and
+every call to Jev is shown under the board, request and raw response. Beat it and your name goes on
+the hall of fame.
 
-![Gomoku board with Jev's candidate pool and probabilities](docs/img/gomoku-board.png)
+Hosted on **Cloudflare Pages** (static page plus Pages Functions), records in **D1**, sign-in with
+Google.
 
-## Three modes
+![The board on a laptop: the game switcher, this game's numbers, sign-in, and the empty Gomoku board](docs/img/home-laptop.png)
 
-The page plays **Player** mode only; Assisted and Naked stay in the API (`mode` in the request body)
-for measurement.
+## Why a board game
 
-| mode | what code does | what Jev sees | who decides |
-|---|---|---|---|
-| **Player** (default) | full perception: fives, open/closed/split fours, open threes, forks, "this move loses next turn"; plays forced wins and blocks itself; prunes to a ranked pool of ~12 candidates | one `choice` question over the pool, each option annotated with exactly what it creates and blocks, plus a threat summary in the state | code for forced tactics, **Jev for everything else** |
-| **Assisted** | annotates every empty point with the same line facts | three `choice` questions (`win_now`, `must_block`, `best_move`) over all empty points | Jev; win/block claims are verified before being played |
-| **Naked** | nothing | the same three questions, every empty point, no descriptions | Jev alone. Measurement mode. |
+We first tried to play Go against large language models the usual way: describe the board in text,
+ask for a move. It was expensive, slow, and the models hallucinated: stones that were not there,
+illegal points, confident nonsense. Jev cannot hallucinate a move, because it can only pick from the
+options it is given, and every option here is legal by construction. That is the doctrine of this
+site: **code computes, Jev judges.**
 
-In Player mode the page shows where Jev's pick ranked in the code heuristic's ordering
-("Heur. #k"), so you can see whether Jev's judgment agrees with, beats, or ignores the
-1-ply evaluation. Forced moves are logged as `forced-win`, `forced-block` and `open-four`
-and cost no call.
+## How Jev plays
 
-Every Jev call's full request payload and raw response are shown under the board, one
-expandable entry per move, with copy buttons.
+Every move is one call. Code builds the position and a ranked, annotated pool of candidates; Jev
+answers one `choice` question over the pool and the page plays its pick. Forced tactics are played by
+code without a call (a five, an open four, a forced block, mate in one) and are logged as such.
+
+- **Gomoku 15×15**: code sees fives, open/closed/split fours, open threes, forks and "this move loses
+  next turn"; it plays forced wins and blocks itself and hands Jev about twelve candidates, each
+  annotated with exactly what it creates and blocks, plus a threat summary in the state.
+- **Go 9×9**: captures, suicide, **positional superko**, area scoring (Chinese rules, komi 7.5),
+  two-pass game end. For every legal point code computes what the move captures, saves, threatens
+  (atari), connects, whether it is self-atari or fills an own eye, the line and the liberties left;
+  Jev picks from the top twelve. `pass` is offered only after the opponent passed, when nothing
+  scores, or near the 200-move cap. Dead stones are not removed at the end, so capture them first.
+- **Chess**: rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0
+  (BSD-2-Clause, `functions/_lib/vendor/`); you are White. For every legal move code computes what
+  it captures, whether the moved piece can be taken back (a static exchange over every attacker and
+  defender on the square; pinned pieces are treated as free to move), what it leaves en prise, what
+  it threatens, check, mate, castling and development, and ranks them. Code plays mate in one; Jev
+  picks from the top twelve. There is no search. The pieces are Colin M.L. Burnett's SVG set
+  (CC BY-SA 3.0, via Wikimedia Commons), inlined as a sprite.
+
+The page shows where Jev's pick ranked in the code's ordering ("heuristic #k"), so you can see
+whether Jev's judgment agrees with, beats, or ignores the one-ply evaluation.
+
+![Chess on a laptop with the Burnett piece set](docs/img/chess-laptop.png)
+
+Two measurement modes remain in the API only (`mode` in the request body), not on the page:
+**Assisted** hands Jev every legal point with the same facts attached and verifies its win/block
+claims before playing them; **Naked** hands Jev every legal point with no facts at all.
 
 ## The page
 
-Built phone-first. The board is measured from its column so it never scrolls sideways; on a phone a
-first tap aims a stone (a ghost appears with a "Place H8" button) and a second tap plays it, while a
-mouse previews on hover and plays on click. Under the board: the status line with the record chip
-(Recorded, Recorded as Name, Practice opponent, Not recorded), Pass or Place when needed, the result
-card at game end, a one-line card saying what Jev played, how sure it was and why, and then every
-call to Jev with the exact request and raw response. Jev's likely moves are drawn on the board after
-its move and fade when you start yours. The top bar holds the menu (game, new game, your games, hall
-of fame, about Jev), this game's numbers in the centre on wide screens, and sign-in. Jev's candidate list and the
-per-move table sit beside the board on wide screens and below it on a phone.
+Built phone-first. The board is measured from its column so it never scrolls sideways. On a phone
+the first tap aims a stone (a ghost appears with a "Place H8" button) and the second tap plays it; a
+mouse previews on hover and plays on click. Jev's five most likely moves are drawn on the board as
+green discs sized by probability after its move, with its own pick's probability on the stone, and
+they fade when you start yours.
 
-## Go 9×9
+Before Jev's first move the board stands alone. From the first call on, under the board: the status
+line, Pass or Place when needed, the result card at game end (with Play again, Share and the replay
+link), a one-line card saying what Jev played, how sure it was and why, and **every call to Jev**,
+newest first, the newest open, with the exact request and the raw response and copy buttons. Beside
+the board on wide screens, below it on a phone: Jev's full candidate list with its reasons, and the
+per-move table (who decided, heuristic rank, confidence, latency, tokens).
 
-The same three modes apply. Code implements captures, suicide, **positional superko**, area
-scoring (Chinese rules, komi 7.5) and two-pass game end, replaying the move list on every
-request so the history is authoritative. For every legal point it computes what the move
-captures, saves, threatens (atari), connects, whether it is self-atari or fills an own eye,
-the line, and the liberties left, and ranks them.
+The top bar holds the menu (new game, Jev opens, your games, hall of fame, about), the game switcher,
+this game's numbers in the centre on wide screens, and sign-in. A replay (`?replay=<id>`) plays
+itself with Play/Pause at about a move a second, steps by hand, and shows Jev's thoughts on every one
+of its moves.
 
-- **Player**: Jev picks from the top ~12 annotated points; `pass` is offered only after the
-  opponent passed, when nothing scores, or near the 200-move cap.
-- **Assisted / Naked**: every legal point plus `pass`; questions are `capture_now`,
-  `must_save` and `best_move`, verified against code truth before being played.
+<p>
+<img src="docs/img/home-phone.png" alt="The page on a phone" width="300">
+<img src="docs/img/menu-phone.png" alt="The menu on a phone, About opened" width="300">
+</p>
 
-Dead stones are not removed at the end, so capture them before passing.
+## Sign in with Google
 
-## Screenshots
+Playing the live Jev needs a Google sign-in: the first touch of the board (or "New game, Jev opens")
+opens a small dialog with Google's button, and the server refuses a live move without a valid session,
+so every recorded game and every hall-of-fame win carries a name. Practice games (a server with no
+key) stay open.
 
-Player mode, Jev (white) wins a Gomoku game. The scoresheet: the last call, per-move table
-with where Jev's pick ranked in the heuristic, and the API log.
+The browser posts Google's ID token to `POST /api/login`; the server verifies the RS256 signature
+against Google's published keys with WebCrypto, checks issuer, audience and expiry, and issues its own
+30-day HMAC session. Every move carries the session. `POST /api/me` lists your games with replay links
+on any device. If a session expires mid-game, signing in again keeps the game: the login request
+carries the game's signed state token, which proves you played it, and the server attaches the game to
+the account.
 
-![Jev's last thought, per-move table and stats](docs/img/gomoku-thought.png)
+Stored: a hash of the Google subject id and the display name. Never the email or anything from the
+mailbox; sign-in requests identity only. The OAuth client id is public and set in the page and in
+`functions/_lib/auth.js` (override with a `GOOGLE_CLIENT_ID` variable). Authorized origins:
+`https://jev-go.chardonn.ai` and `http://localhost:3111`.
 
-Every call, expandable, with the exact request and Jev's raw response:
+## Records, hall of fame, replays
 
-![Jev API calls panel](docs/img/gomoku-api-log.png)
+Every game against the live Jev is recorded on the server: one row per game and one per ply,
+including Jev's top-5 probabilities, the probability it gave the move it played, latency, tokens and
+the raw request and response. A game is recorded only when it was played move by move through the
+signed session token the server issues: the token binds the game id to the exact position, so a
+recorded win was produced on the server, never posted by a client, and an older token cannot rewind
+a recorded game (the one exception is resending the same move after a lost response). The opponent
+mode is sealed into the token too.
 
-## Chess
-
-Standard chess with rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0
-(BSD-2-Clause, `functions/_lib/vendor/`). X is White. The pieces are Colin M.L. Burnett's SVG set (CC BY-SA 3.0, via Wikimedia Commons), inlined as a sprite. The server returns an HMAC-signed snapshot of the
-position (FEN plus a repetition table) that the client sends back, so a request loads the position in
-microseconds instead of replaying the move list; the list is still sent as context for Jev, and a request
-without a valid snapshot falls back to replaying it. For every legal move code computes what it captures, whether the moved
-piece can be taken back (attacked and undefended, or by something cheaper; a king only takes an
-undefended piece), what other piece it leaves en prise, what it threatens, check, mate, castling,
-development, and ranks them. Piece safety is a static exchange over every attacker and defender on the
-square (pinned pieces are treated as free to move); there is no search.
-
-- **Player**: code plays mate in one; otherwise Jev picks from the top 12 annotated moves.
-- **Assisted / Naked**: every legal move, in SAN order; questions `mate_now`, `win_material`,
-  `best_move`, verified before being played.
-
-## Leaderboard and replays
-
-Every verified game is recorded by the server: one row per game and one per ply, including Jev's
-top-5 probabilities, the probability it gave the move it played, verdicts, latency, tokens and the
-raw request/response. A game is verified when it was played move by move through the signed session
-token the server issues (all three games use one now), so a recorded win was produced on the server,
-not posted by a client. Games played without a key (mock) are recorded but never count.
-
-- **Leaderboard** (`GET /api/leaderboard?game=gomoku`): human wins against the real Jev, fewest
-  plies first, with the model version. Winners can claim a display name once (`POST /api/claim`).
-- **Replay** (`?replay=<id>` on the page, `GET /api/game/<id>`): step through any recorded game with
-  Jev's thoughts on every one of its moves.
+- **Hall of fame** (`GET /api/leaderboard?game=gomoku`): human wins against the live Jev, fewest
+  plies first, with the model version. The response also carries `backend` (`native` or `mock`) and
+  `schema` (`"ok"`, or the database's own error if a column the code writes is missing).
+- **Replay** (`?replay=<id>` on the page, `GET /api/game/<id>`): any recorded game, cached at the
+  edge once finished.
+- Practice games are recorded and listed under your games, marked as practice, but never count.
+- `POST /api/claim`, the old name form for anonymous wins, still exists; the page no longer needs it.
 
 Storage is Cloudflare D1, set up in the dashboard: Workers & Pages → D1 → create a database named
 `jev-go`, run `schema.sql` in its Console tab, then in the Pages project's Settings → Bindings add a
@@ -100,62 +120,46 @@ D1 binding with variable name `DB` for Production and Preview, and redeploy. Wit
 server keeps records in memory only.
 
 When `schema.sql` gains a column, an existing database needs the matching file under `migrations/`
-run in the same Console tab (`CREATE TABLE IF NOT EXISTS` never alters a table that exists). The
-leaderboard response carries `schema`: `"ok"`, or the database's own error when a column the code
-writes is missing, in which case no game is being recorded until the migration runs.
-
-## Sign in with Google
-
-Playing the live Jev needs a Google sign-in: the first touch of the board (or "New game, Jev opens")
-opens a small dialog with Google's button, and the server refuses a live move without a valid session,
-so every recorded game and every hall-of-fame win carries a name. Practice games (no key) stay open.
-The browser posts the ID token to `POST /api/login`, the server verifies Google's RS256 signature against
-Google's published keys with WebCrypto, checks issuer, audience and expiry, and issues its own 30-day
-HMAC session. Every move then carries the session; `POST /api/me` lists your games with replay links on
-any device. Signing in again after a session expired mid-game still keeps the game: the login request
-carries the game's signed state token, which proves you played it, and the server attaches the game to the
-account. The record chip next to the status line says whether the game on screen counts and under which
-name. (`POST /api/claim`, the old name form for anonymous wins, still exists but the page no longer uses it.)
-
-Stored: a hash of the Google subject id and the display name. Never the email or anything from the
-mailbox; sign-in requests identity only. The OAuth client id is public and set in the page and in
-`functions/_lib/auth.js` (override with a `GOOGLE_CLIENT_ID` variable). Authorized origins:
-`https://jev-go.chardonn.ai` and `http://localhost:3111`.
+run in the same Console tab: `CREATE TABLE IF NOT EXISTS` never alters a table that exists, and a
+missing column makes every record write fail silently. The `schema` field on the leaderboard
+response is the check.
 
 ## Layout
 
 ```
-functions/api/move.js     Pages Function: POST /api/move (Gomoku)
-functions/api/go.js       Pages Function: POST /api/go   (Go 9×9)
-functions/api/chess.js    Pages Function: POST /api/chess
-functions/api/leaderboard.js, game/[id].js, claim.js, me.js, login.js   records and sign-in API
-functions/_lib/session.js, store.js, records.js         signed sessions, D1/memory store, read cores
-functions/_lib/google.js, auth.js                       Google ID token verification, player sessions
-functions/_lib/move.js    runtime-agnostic core (prompt build, Jev call, verify, decide)
-functions/_lib/gomoku.js  Gomoku threat engine, candidate ranking, descriptions
-functions/_lib/go.js      Go engine: groups, captures, superko, scoring, annotations
-functions/_lib/go_move.js Go handler core
-functions/_lib/chess.js   chess annotations on top of vendored chess.js
-functions/_lib/chess_move.js chess handler core
-functions/_lib/jev.js     shared Jev transport (TypeSafe API, or a mock when no key is set)
-public/index.html         the page
-dev.mjs                   plain Node dev server (no wrangler needed)
-test.mjs                  node:test suite
-wrangler.toml             Pages project config
+public/index.html            the page (inline CSS + JS, the chess piece sprite)
+functions/api/move.js        POST /api/move   Gomoku
+functions/api/go.js          POST /api/go     Go 9×9
+functions/api/chess.js       POST /api/chess
+functions/api/login.js, me.js, leaderboard.js, game/[id].js, claim.js   sign-in and records
+functions/_lib/move.js, go_move.js, chess_move.js   handler cores (prompt, Jev call, verify, decide)
+functions/_lib/gomoku.js     Gomoku threat engine, candidate ranking, descriptions
+functions/_lib/go.js         Go engine: groups, captures, superko, scoring, annotations
+functions/_lib/chess.js      chess annotations on top of vendored chess.js
+functions/_lib/jev.js        Jev transport (TypeSafe API, or a heuristic stand-in when no key is set)
+functions/_lib/session.js    signed game sessions (position, mode), records
+functions/_lib/store.js      D1 store and memory store
+functions/_lib/records.js    leaderboard, replay, me, claim
+functions/_lib/google.js, auth.js, token.js   Google ID token verification, player sessions, HMAC
+schema.sql, migrations/      D1 schema and the changes to apply to an existing database
+dev.mjs                      plain Node dev server (no wrangler needed)
+test.mjs                     node:test suite; the D1 statements run through node:sqlite
+wrangler.toml                local-only; the live project is configured in the dashboard
 ```
 
 ## Backend selection
 
 With `TYPESAFE_API_KEY` set, every move is one `POST https://api.typesafe.ai/v1/systemone` with model
-`jev-latest`. Without it the server plays a heuristic stand-in and the record chip next to the status
-line reads "Practice opponent" instead of "Recorded", so the app runs locally with no key. `STATE_SECRET` optionally signs the chess state tokens; it defaults to the API key.
+`jev-latest`. Without it the server plays a heuristic stand-in, the page says "Practice opponent" next
+to the status line, and no sign-in is asked for, so the app runs locally with no key. `STATE_SECRET`
+optionally signs the session tokens; it defaults to the API key.
 
 ## Run locally
 
 ```bash
-cp .dev.vars.example .dev.vars   # paste TYPESAFE_API_KEY, or leave empty for mock mode
+cp .dev.vars.example .dev.vars   # paste TYPESAFE_API_KEY, or leave empty for the practice opponent
 npm test
-npm run dev                      # plain Node, http://localhost:3000
+PORT=3111 npm run dev            # plain Node; 3111 is the origin registered for Google sign-in
 npm run cf:dev                   # or the real Pages runtime via wrangler, http://localhost:8788
 ```
 
@@ -164,11 +168,11 @@ npm run cf:dev                   # or the real Pages runtime via wrangler, http:
 The project is connected to this GitHub repository in the Cloudflare dashboard: every push to `main`
 deploys. Build command empty, output directory `public`. Secrets live in the project's Settings →
 Variables and Secrets: `TYPESAFE_API_KEY` (required for the real Jev) and optionally `STATE_SECRET`.
-Until the key is set, the deployed page runs in mock mode.
+Until the key is set, the deployed page runs with the practice opponent.
 
 ## Cost
 
-Jev bills input only, $0.042 per million tokens. Measured: Player mode is about 1,100 input tokens
-per call (a 20-call Gomoku game costs about a tenth of a cent); Naked and Assisted send every empty
-point and run about 13,000 tokens per call on Gomoku, far fewer on Go and chess. Either way a game
-is well under a cent.
+Jev bills input only, $0.042 per million tokens. Measured: Player mode is about 1,100 input tokens per
+call, so a 20-call Gomoku game costs about a tenth of a cent. The API-only Assisted and Naked modes
+send every empty point and run about 13,000 tokens per call on Gomoku, far fewer on Go and chess.
+Either way a game is well under a cent.
