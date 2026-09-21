@@ -4,7 +4,7 @@
 
 Play 15×15 Gomoku, 9×9 Go or chess against **Jev**, TypeSafe AI's System One decision model.
 Code does the perception, Jev does the judgment, and every API call is shown on the page.
-Hosted on **Cloudflare Pages** with two Pages Functions.
+Hosted on **Cloudflare Pages** with three Pages Functions, one per game.
 
 ![Gomoku board with Jev's candidate pool and probabilities](docs/img/gomoku-board.png)
 
