@@ -68,7 +68,7 @@ Every call, expandable, with the exact request and Jev's raw response:
 ## Chess
 
 Standard chess with rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0
-(BSD-2-Clause, `functions/_lib/vendor/`). X is White. The server returns an HMAC-signed snapshot of the
+(BSD-2-Clause, `functions/_lib/vendor/`). X is White. The pieces are Colin M.L. Burnett's SVG set (CC BY-SA 3.0, via Wikimedia Commons), inlined as a sprite. The server returns an HMAC-signed snapshot of the
 position (FEN plus a repetition table) that the client sends back, so a request loads the position in
 microseconds instead of replaying the move list; the list is still sent as context for Jev, and a request
 without a valid snapshot falls back to replaying it. For every legal move code computes what it captures, whether the moved
