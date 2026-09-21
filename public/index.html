@@ -42,7 +42,9 @@ a{color:var(--felt)}
 .top{max-width:1120px;margin:0 auto 16px;display:flex;align-items:center;gap:8px 12px;padding:8px 0;border-bottom:1px solid var(--rule)}
 .iconbtn{width:40px;height:40px;min-height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:20px;line-height:1;border-radius:4px}
 .iconbtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.brand{font:600 20px/1 var(--serif);font-variation-settings:"opsz" 24;color:var(--ink);text-decoration:none;white-space:nowrap}
+.top .seg{flex:none}
+#whoin{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+@media (max-width:480px){.top .seg button{padding:7px 9px;font-size:14px}.who #whoname,.who #signout{display:none}} /* on a phone the bar shows the avatar only; Sign out is in the menu */ /* the bar must hold the menu, the game and the account on a phone */
 .strip{flex:1 1 auto;min-width:0;display:none;justify-content:center;gap:0 18px;font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden}
 .strip b{font:600 15px/1 var(--serif);color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
 @media (min-width:1100px){.strip{display:flex}} /* only when the two-column layout leaves room for it */
@@ -236,7 +238,9 @@ dialog.gate .help{margin:8px 0 0}
 <body>
 <header class="top">
   <button class="iconbtn" id="menubtn" aria-label="Menu" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-  <a class="brand" href="./">Beat Jev</a>
+  <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
+    <button type="button" data-v="gomoku">Gomoku</button><button type="button" data-v="go">Go</button><button type="button" data-v="chess">Chess</button>
+  </div>
   <div class="strip" id="strip" aria-label="This game's numbers"></div>
   <div class="topright">
     <div class="who" id="who">
@@ -319,11 +323,6 @@ dialog.gate .help{margin:8px 0 0}
 <dialog class="drawer" id="menu" aria-label="Menu">
   <div class="drawerhead"><b>Beat Jev</b><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="drawerbody">
-    <div class="setting"><div class="lab">Game</div>
-      <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
-        <button type="button" data-v="gomoku">Gomoku</button><button type="button" data-v="go">Go</button><button type="button" data-v="chess">Chess</button>
-      </div>
-    </div>
     <div class="setting"><div class="lab">Start over</div>
       <div class="row" style="margin-top:0"><button class="primary" id="newgame">New game</button><button id="newgamejev">New game, Jev opens</button></div>
     </div>
@@ -332,6 +331,7 @@ dialog.gate .help{margin:8px 0 0}
       <div class="body">
         <div class="help" id="whohelp">Playing the live Jev needs a Google sign-in (top right, or at your first move). Your games and wins are kept under your first name, on any device.</div>
         <div id="mine" hidden>
+          <div class="row" style="margin:0 0 10px"><span id="whoname2"></span><button class="small" id="signout2">Sign out</button></div>
           <div id="mystats" class="stats"></div>
           <div class="tablewrap" id="mygames"></div>
         </div>
@@ -862,7 +862,7 @@ $("menubtn").addEventListener("click",()=>openDrawer("menu"));
 // ---- sign in with Google ----
 function renderWho(){
   $("whoin").hidden=!me; $("gsi").hidden=!!me; $("whohelp").hidden=!!me; $("mine").hidden=!me;
-  if(me){ $("whoname").textContent=me.user.name; const pic=$("whopic"); if(me.user.picture){ pic.src=me.user.picture; pic.hidden=false; } else pic.hidden=true; }
+  if(me){ $("whoname").textContent=me.user.name; $("whoname2").textContent=`Signed in as ${me.user.name}.`; const pic=$("whopic"); if(me.user.picture){ pic.src=me.user.picture; pic.hidden=false; } else pic.hidden=true; }
 }
 function renderGsi(){
   if(!window.google||!google.accounts) return;
@@ -895,7 +895,7 @@ async function onGoogleCredential(resp){
     $("note").textContent=""; renderWho(); renderGsi(); loadMyGames(); render(); if($("gate").open) $("gate").close();
   }catch(e){ $("err").textContent="Sign-in failed: "+friendly(e.message); }
 }
-$("signout").addEventListener("click",()=>{
+for(const id of ["signout","signout2"]) $(id).addEventListener("click",()=>{
   const keeps= S&&S.status==="playing"&&S.owner ? `This game stays under ${S.owner}; sign-out applies to your next game.` : "";
   signedOut(keeps); if(window.google&&google.accounts) google.accounts.id.disableAutoSelect(); render();
 });
@@ -990,7 +990,7 @@ for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("clic
   const prev=gameSel; gameSel=b.dataset.v;
   if(!startNew("O")){ gameSel=prev; return; } // declined: nothing changes, nothing is remembered
   try{ localStorage.setItem(LSGAME,gameSel); }catch{}
-  loadLeaderboard(); $("menu").close();
+  loadLeaderboard();
 });
 
 renderWho(); if(me) loadMyGames();
