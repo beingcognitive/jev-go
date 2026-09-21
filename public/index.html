@@ -363,7 +363,7 @@ dialog.gate .help{margin:8px 0 0}
       </div>
     </details>
     <details class="panel" id="p-about">
-      <summary>About Jev</summary>
+      <summary>About</summary>
       <div class="body prose">
         <p><b>Jev</b> is TypeSafe AI's System One decision model. It does not generate text. You give it a state and a typed question with a list of options, and it returns one choice with a probability for every option. That is the whole interface, which is why a call costs a fraction of a cent and answers in a few hundred milliseconds.</p>
         <p><b>Why a board game.</b> We first tried to play Go against large language models the usual way: describe the board in text, ask for a move. It was expensive, slow, and the models hallucinated: stones that were not there, illegal points, confident nonsense. Jev cannot hallucinate a move, because it can only pick from the options it is given, and every option here is legal by construction. Code computes the position (threats, captures, material); Jev judges among the candidates. The calls under the board show exactly what it saw and what it answered.</p>
