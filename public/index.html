@@ -81,11 +81,11 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .stone.O{background:radial-gradient(circle at 34% 32%,#ffffff,#cfcfcf 70%);border:1px solid #8f8f8f}
 .stone.pending{opacity:.55}
 .last{position:absolute;left:50%;top:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;background:var(--signal);z-index:4}
-.heat{position:absolute;inset:14%;border-radius:50%;background:var(--felt);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700;pointer-events:none;font-variant-numeric:tabular-nums}
+.heat{position:absolute;inset:14%;border-radius:50%;background:var(--felt);z-index:2;display:flex;align-items:center;justify-content:center;font-size:min(9px,calc(var(--cell)*.3));line-height:1;color:#fff;font-weight:700;pointer-events:none;font-variant-numeric:tabular-nums}
 .heat,.cand,.truth{transition:opacity 1.6s ease,transform 1.6s ease}
 .grid.faded .heat{opacity:0 !important;transform:scale(.55)}
 .grid.faded .cand,.grid.faded .truth{opacity:0 !important}
-.pick{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;z-index:5;pointer-events:none;transition:opacity 1.2s ease;font-variant-numeric:tabular-nums}
+.pick{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:min(10px,calc(var(--cell)*.4));font-weight:700;z-index:5;pointer-events:none;transition:opacity 1.2s ease;font-variant-numeric:tabular-nums}
 .pick.X{color:#fff}.pick.O{color:#1e211c}
 .last.under{opacity:0;transition:opacity 1.2s ease .6s}
 .grid.faded .pick{opacity:0}
@@ -593,8 +593,8 @@ async function play(humanMove,localMove){
 let thoughtsShownAt=0;
 function scheduleFade(){
   clearTimeout(fadeTimer); fadeArmed=false; gridEl.classList.remove("faded"); thoughtsShownAt=performance.now();
-  if(thoughtsSel!=="fade"||lastPointer==="touch") return; // on touch the thoughts stay until you aim your next stone
-  fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),5000);
+  if(thoughtsSel!=="fade") return;
+  fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),5000); // five seconds, or sooner when you start your move
 }
 gridEl.addEventListener("pointermove",(e)=>{
   if(e.pointerType==="touch") return;
@@ -771,6 +771,7 @@ function render(light){
     for(const t of [cfg.t1,cfg.t2]) if(S.last.verdict[t]!=="found"&&((S.last.truth&&S.last.truth[t])||[]).length) S.last.truth[t].forEach(k=>truthRing.add(k));
   }
   const locked=S.busy||S.status!=="playing"||toMove()!==S.human;
+  const smallCells=parseFloat(gridEl.style.getPropertyValue("--cell"))<28; // phone-sized points: discs without numbers
   if(cfg.chess){ renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank); }
   else for(const cell of gridEl.querySelectorAll(".cell")){
     const r=+cell.dataset.r, c=+cell.dataset.c, k=cell.dataset.key;
@@ -789,7 +790,7 @@ function render(light){
       const st=document.createElement("span"); st.className="stone pending "+S.human; cell.appendChild(st);
     } else {
       if(S.aim===k){ const g=document.createElement("span"); g.className="ghost aim "+S.human; cell.appendChild(g); }
-      if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; const f=heat[k]/(pmax||1); h.style.opacity=(0.25+0.6*f).toFixed(2); h.style.inset=(30-22*f).toFixed(0)+"%"; h.style.transitionDelay=(heatRank[k]||0)+"ms"; if(heat[k]>=0.05) h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
+      if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; const f=heat[k]/(pmax||1); h.style.opacity=(0.25+0.6*f).toFixed(2); h.style.inset=(30-22*f).toFixed(0)+"%"; h.style.transitionDelay=(heatRank[k]||0)+"ms"; if(heat[k]>=0.05&&!smallCells) h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
       else if(candSet.has(k)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
       if(truthRing.has(k)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
     }
@@ -805,8 +806,9 @@ function render(light){
   const st=$("status"); if(st.textContent!==msg) st.textContent=msg; // a live region: only real changes are announced
   // the record chip: does this game count?
   const chip=$("recchip"); const be=S.backend;
-  if(S.status==="replay"||!be||!S.moves.length){ chip.hidden=true; } // nothing is recorded before the first move
-  else { chip.hidden=false; if(be==="mock"){ chip.textContent="Practice opponent"; chip.className="chip warn"; } else if(S.verified){ chip.textContent=S.owner?`Recorded as ${S.owner}`:"Recorded"; chip.className="chip live"; } else { chip.textContent="Not recorded"; chip.className="chip"; } }
+  // A live game is always recorded under the signed-in name, so the chip speaks only when something is off.
+  if(S.status==="replay"||!be||!S.moves.length||(be==="native"&&S.verified)){ chip.hidden=true; }
+  else { chip.hidden=false; if(be==="mock"){ chip.textContent="Practice opponent"; chip.className="chip warn"; } else { chip.textContent="Not recorded"; chip.className="chip"; } }
   $("backendhelp").textContent= be==="native" ? "Opponent: Jev, live. The server calls TypeSafe's Jev API for every move." : be==="mock" ? "Opponent: a practice stand-in. The server has no Jev key, so a heuristic plays instead and nothing counts for the hall of fame." : "The opponent resolves on the first move.";
   // aim + actions
   const aiming=!!S.aim&&S.status==="playing"&&!S.busy;
