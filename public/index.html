@@ -39,10 +39,12 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .cell.edge-l::before{left:50%}.cell.edge-r::before{right:50%}
 .cell.edge-t::after{top:50%}.cell.edge-b::after{bottom:50%}
 .cell.locked{cursor:default}
-@media (hover:hover){
-  .grid.human-X:not(.chess) .cell:not(.locked):hover{background:radial-gradient(circle at 50% 50%,rgba(20,20,20,.55) 0 37%,transparent 39%)}
-  .grid.human-O:not(.chess) .cell:not(.locked):hover{background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.8) 0 37%,transparent 39%)}
-}
+@keyframes settle{from{transform:scale(.5);opacity:0}to{transform:scale(.94);opacity:.5}}
+@keyframes breathe{0%,100%{transform:scale(.94);opacity:.5}50%{transform:scale(1.03);opacity:.78}}
+.ghost{position:absolute;inset:10%;border-radius:50%;z-index:2;pointer-events:none;opacity:.5;transform:scale(.94);box-shadow:0 1px 3px rgba(0,0,0,.35);animation:settle .16s ease-out,breathe 1.8s ease-in-out .16s infinite}
+.ghost.X{background:radial-gradient(circle at 35% 35%,#6a6a6a,#000)}
+.ghost.O{background:radial-gradient(circle at 35% 35%,#fff,#d0d0d0);border:1px solid #999}
+@media (prefers-reduced-motion:reduce){.ghost{animation:none}.grid.chess .cell:hover .ghostpiece{animation:none}}
 .dot{position:absolute;left:50%;top:50%;width:5px;height:5px;background:var(--line);border-radius:50%;transform:translate(-50%,-50%);z-index:1}
 .stone{position:absolute;inset:10%;border-radius:50%;z-index:3;box-shadow:0 1px 3px rgba(0,0,0,.45)}
 .stone.X{background:radial-gradient(circle at 35% 35%,#5a5a5a,#000)}
@@ -77,7 +79,7 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .ghostpiece{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(var(--cell)*.74);line-height:1;opacity:0;z-index:4;pointer-events:none;transition:opacity .12s;user-select:none}
 .ghostpiece.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000}.ghostpiece.b{color:#111;text-shadow:0 0 1px #fff}
 @media (hover:hover){
-  .grid.chess .cell:hover .ghostpiece{opacity:.55}
+  .grid.chess .cell:hover .ghostpiece{opacity:.55;animation:breathe 1.8s ease-in-out infinite}
   .grid.chess .cell:hover .ghostpiece~.target,.grid.chess .cell:hover .target{opacity:.35}
   .grid.chess .cell.canpick:hover{box-shadow:inset 0 0 0 3px rgba(37,99,235,.45)}
 }
@@ -302,6 +304,8 @@ function buildGrid(){
       cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=keyOf(r,c);
       if(stars.has(r*cfg.size+c)){ const dot=document.createElement("span"); dot.className="dot"; cell.appendChild(dot); }
       cell.addEventListener("click",()=>onCell(r,c));
+      cell.addEventListener("pointerenter",(e)=>{ if(e.pointerType==="touch") return; if(!S||S.busy||S.status!=="playing"||toMove()!==S.human||S.board[r][c]!==".") return; if(cell.querySelector(".ghost")) return; const g=document.createElement("span"); g.className="ghost "+S.human; cell.appendChild(g); });
+      cell.addEventListener("pointerleave",()=>{ for(const el of cell.querySelectorAll(".ghost")) el.remove(); });
       gridEl.appendChild(cell);
     }
   }
@@ -488,7 +492,7 @@ function render(){
   else for(const cell of gridEl.querySelectorAll(".cell")){
     const r=+cell.dataset.r, c=+cell.dataset.c, k=cell.dataset.key;
     cell.classList.toggle("locked",locked);
-    for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth,.cand,.pick")) el.remove();
+    for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth,.cand,.pick,.ghost")) el.remove();
     const ch=S.board[r][c];
     if(ch!=="."){
       const st=document.createElement("span"); st.className="stone "+ch+(k===lastKey&&k!==S._animated?" new":""); cell.appendChild(st);
