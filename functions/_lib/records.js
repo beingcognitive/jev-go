@@ -27,7 +27,7 @@ export async function handleGame(params, query, env = {}) {
     io: query.io === "1" ? t.io : undefined,
   }));
   const { id: gid, game: g, mode, jev, backend, model, result, plies, name, created_at, ended_at } = game;
-  return reply(200, { ok: true, game: { id: gid, game: g, mode, jev, backend, model, result, plies, name: name || null, created_at, ended_at }, turns });
+  return { status: 200, cache: !!result, body: { ok: true, game: { id: gid, game: g, mode, jev, backend, model, result, plies, name: name || null, created_at, ended_at }, turns } }; // only a finished game may be cached
 }
 
 // POST { session }: the signed-in player's recent games.
@@ -36,7 +36,7 @@ export async function handleMe(body, env = {}) {
   if (!user) return reply(401, { ok: false, error: "not signed in" });
   const games = await storeFor(env).myGames(user.id);
   const stats = { games: 0, wins: 0, losses: 0, draws: 0 };
-  for (const g of games) { if (!g.result) continue; stats.games++; if (g.result === "human_wins") stats.wins++; else if (g.result === "jev_wins") stats.losses++; else stats.draws++; }
+  for (const g of games) { if (!g.result || g.backend === "mock") continue; stats.games++; if (g.result === "human_wins") stats.wins++; else if (g.result === "jev_wins") stats.losses++; else stats.draws++; }
   return reply(200, { ok: true, user, games, stats });
 }
 

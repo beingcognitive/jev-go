@@ -24,7 +24,7 @@ export function adaptGet(handler, cacheSeconds = 0) {
     async onRequestGet({ request, env, params }) {
       const url = new URL(request.url);
       const r = await handler(params || {}, Object.fromEntries(url.searchParams), env);
-      return json(r.body, r.status, r.status === 200 ? cacheSeconds : 0);
+      return json(r.body, r.status, r.status === 200 && r.cache !== false ? cacheSeconds : 0);
     },
     onRequest() {
       return json({ ok: false, error: "GET only" }, 405);

@@ -132,7 +132,7 @@ function validate(board, moves) {
 export async function handleMove(body, env = {}) {
   try {
     const { board: rows, moves = [], humanMove = null, jev = "O", state = null } = body || {};
-    const mode = normalizeMode(body && body.mode);
+    let mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
     if (!Array.isArray(moves)) throw new Error("moves must be an array");
     const me = jev, opp = jev === "X" ? "O" : "X";
@@ -140,6 +140,7 @@ export async function handleMove(body, env = {}) {
     const { X: x0, O: o0 } = G.counts(board);
     // A session token makes its board authoritative; without one only the empty board starts a verified game.
     const s = await openSession(env, state, "gomoku", moves.length === 0 && x0 === 0 && o0 === 0);
+    if (s.mode) mode = s.mode; else s.mode = mode; // the mode is sealed into the session: the client cannot change it mid-game
     if (s.verified && s.pos) {
       if (s.n !== moves.length) throw new Error("bad state");
       board = G.parseBoard(s.pos);

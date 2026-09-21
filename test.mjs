@@ -676,6 +676,7 @@ test("records: leaderboard lists only real-Jev human wins and the memory store s
 import { verifyGoogleIdToken } from "./functions/_lib/google.js";
 import { handleLogin, userFromSession, DEFAULT_GOOGLE_CLIENT_ID } from "./functions/_lib/auth.js";
 import { handleMe } from "./functions/_lib/records.js";
+import { secretOf } from "./functions/_lib/session.js";
 
 const b64u = (bytes) => Buffer.from(bytes).toString("base64url");
 async function fakeGoogle(claims, { kid = "k1", alg = "RS256" } = {}) {
@@ -738,4 +739,54 @@ test("login issues a session; the session attributes games; /api/me lists them; 
   assert.equal((await handleLogin({ credential: g.token, state: anon.body.state }, {}, g.jwks)).body.attached, false);
   const garbage = await handleLogin({ credential: g.token, state: "garbage" }, {}, g.jwks);
   assert.equal(garbage.status, 200); assert.equal(garbage.body.attached, false);
+  // another account cannot take a game that has an owner
+  const other = await fakeGoogle(claims({ sub: "someone-else", given_name: "Bob" }));
+  const steal = await handleLogin({ credential: other.token, state: anon.body.state }, {}, other.jwks);
+  assert.equal(steal.status, 200); assert.equal(steal.body.attached, false);
+  assert.equal((await store.getGame(anon.body.gameId)).user_id, login.body.user.id);
+  // a session token is not a game token; a well-signed token for a game the store never saw attaches nothing
+  assert.equal((await handleLogin({ credential: g.token, state: session }, {}, g.jwks)).body.attached, false);
+  const ghost = await sign({ g: "chess", id: "0".repeat(16), n: 0, pos: null, t: Date.now() }, secretOf({}));
+  assert.equal((await handleLogin({ credential: g.token, state: ghost }, {}, g.jwks)).body.attached, false);
+  // a name claimed before signing in survives the attach, and the login response reports it
+  const winId = "f".repeat(16);
+  await store.upsertGame({ id: winId, game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1", result: "human_wins", plies: 20, created_at: Date.now(), ended_at: Date.now() });
+  const winTok = await sign({ g: "gomoku", id: winId, n: 20, pos: null, t: Date.now() }, secretOf({}));
+  assert.equal((await handleClaim({ state: winTok, name: "Zed" }, {})).status, 200);
+  const late2 = await handleLogin({ credential: g.token, state: winTok }, {}, g.jwks);
+  assert.equal(late2.body.attached, true); assert.equal(late2.body.game.name, "Zed"); assert.equal((await store.getGame(winId)).name, "Zed");
+  // an expired session plays anonymously: the move succeeds and reports no owner
+  const expired = await sign({ v: 1, u: login.body.user.id, n: "Kyung-Hoon", p: null, exp: Date.now() - 1000 }, secretOf({}));
+  const rx = await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player", session: expired }, {});
+  assert.equal(rx.status, 200); assert.equal(rx.body.owner, null);
+  // a practice (mock) game is listed under the account but never on the hall of fame, and does not count in the stats
+  const mockId = "a".repeat(16);
+  await store.upsertGame({ id: mockId, game: "go", mode: "player", jev: "O", backend: "mock", result: "human_wins", plies: 30, created_at: Date.now(), ended_at: Date.now(), user_id: login.body.user.id, name: "Kyung-Hoon" });
+  const mine2 = await handleMe({ session }, {});
+  assert.ok(mine2.body.games.some((x) => x.id === mockId && x.backend === "mock"));
+  assert.ok(!(await store.leaderboard("go")).some((x) => x.id === mockId));
+  const realWins = mine2.body.games.filter((x) => x.result === "human_wins" && x.backend !== "mock").length;
+  assert.equal(realWins, 2); assert.equal(mine2.body.stats.wins, realWins);
+});
+
+test("records: the mode is sealed into the session, a game cannot be rewound with an old token, and a state query records nothing", async () => {
+  const store = storeFor({});
+  const r0 = await handleChessMove({ moves: [], humanMove: null, jev: "O", mode: "naked" }, {}); // the state query already seals the mode
+  assert.equal(r0.status, 200); if (r0.after) await r0.after();
+  assert.equal(await store.getGame(r0.body.gameId), null); // no move yet: not a game
+  const r1 = await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player", state: r0.body.state }, {});
+  assert.equal(r1.status, 200); assert.equal(r1.body.mode, "naked"); if (r1.after) await r1.after();
+  const r2 = await handleChessMove({ moves: r1.body.moves, humanMove: "d4", jev: "O", mode: "player", state: r1.body.state }, {});
+  assert.equal(r2.status, 200); assert.equal(r2.body.mode, "naked"); if (r2.after) await r2.after(); // the client's new mode is ignored
+  assert.equal((await store.getGame(r1.body.gameId)).mode, "naked");
+  const rewind = await handleChessMove({ moves: r1.body.moves, humanMove: "d4", jev: "O", mode: "naked", state: r1.body.state }, {});
+  assert.equal(rewind.status, 400); assert.match(rewind.body.error, /stale state/);
+  // the memory store keeps first-write attribution and marks a mid-game mode change as mixed, like D1
+  await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "native", result: null, plies: 4, created_at: 1, user_id: "g_a", name: "Alice" });
+  await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "naked", jev: "O", backend: "native", result: "human_wins", plies: 6, created_at: 1, ended_at: 2, user_id: "g_b", name: "Bob" });
+  const g = await store.getGame("b".repeat(16));
+  assert.equal(g.user_id, "g_a"); assert.equal(g.name, "Alice"); assert.equal(g.mode, "mixed"); assert.equal(g.result, "human_wins");
+  await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "naked", jev: "O", backend: "native", result: null, plies: 2, created_at: 1 });
+  const g2 = await store.getGame("b".repeat(16));
+  assert.equal(g2.result, "human_wins"); assert.equal(g2.plies, 6); // an older upsert cannot un-finish or shorten it
 });

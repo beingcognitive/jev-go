@@ -8,14 +8,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer onload="window.__gsiLoaded=true;window.gsiReady&&window.gsiReady()"></script>
+<script src="https://accounts.google.com/gsi/client" async defer onload="window.__gsiLoaded=true;window.gsiReady&&window.gsiReady()" onerror="window.__gsiFailed=true;window.gsiFailed&&window.gsiFailed()"></script>
 <style>
 :root{
   --paper:#eef0ea; --sheet:#f7f8f4; --ink:#1e211c; --ink-2:#5a6156; --rule:#d4d9cf;
   --felt:#2f5d3a; --felt-2:#25492e; --felt-soft:rgba(47,93,58,.14);
   --signal:#c8102e; --good:#2f5d3a; --bad:#b3261e; --warn:#9a6b00;
   --wood:#d9b06a; --wood-2:#c4974f; --line:#6e5027; --coord:#3b2c14;
-  --gutter:16px; --cell:40px; --reserve:0px; /* width kept free for the scoresheet beside the board on wide screens */
+  --gutter:16px; --cell:min(calc((100vw - 74px) / 15), 40px); /* first-paint fallback; the script measures the real column */
   --serif:"Fraunces",Georgia,serif; --sans:"Atkinson Hyperlegible",system-ui,sans-serif;
 }
 @media (prefers-color-scheme:dark){
@@ -38,18 +38,22 @@ body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--sans)
 :focus-visible{outline:3px solid var(--felt);outline-offset:2px}
 a{color:var(--felt)}
 
-/* ----- top bar: brand, game, account ----- */
-.top{max-width:1120px;margin:0 auto 16px;display:flex;align-items:center;gap:10px 14px;padding:10px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap}
-.brand{font:600 20px/1 var(--serif);font-variation-settings:"opsz" 24;color:var(--ink);text-decoration:none;order:1}
-.who{order:2;margin-left:auto;display:flex;align-items:center;gap:8px;font-size:15px;min-height:40px}
+/* ----- top bar: menu, brand, the game's numbers, settings, account ----- */
+.top{max-width:1120px;margin:0 auto 16px;display:flex;align-items:center;gap:8px 12px;padding:8px 0;border-bottom:1px solid var(--rule)}
+.iconbtn{width:40px;height:40px;min-height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:20px;line-height:1;border-radius:4px}
+.iconbtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.brand{font:600 20px/1 var(--serif);font-variation-settings:"opsz" 24;color:var(--ink);text-decoration:none;white-space:nowrap}
+.strip{flex:1 1 auto;min-width:0;display:none;justify-content:center;gap:0 18px;font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden}
+.strip b{font:600 15px/1 var(--serif);color:var(--ink);font-variant-numeric:tabular-nums;margin-right:4px}
+@media (min-width:1100px){.strip{display:flex}} /* only when the two-column layout leaves room for it */
+.topright{margin-left:auto;display:flex;align-items:center;gap:8px}
+.who{display:flex;align-items:center;gap:8px;font-size:15px;min-height:40px}
 .who img{width:28px;height:28px;border-radius:50%}
-.top .seg{order:3;flex-basis:100%}
-@media (min-width:640px){.top .seg{order:2;flex-basis:auto;margin-left:6px}.who{order:3}}
 
-/* ----- two columns from 901px; the play column sticks so the board stays in view ----- */
-main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
-@media (max-width:1023px){.top,main{max-width:720px}} /* one column: keep the text measure and the chip near the board */
-@media (min-width:1024px){:root{--reserve:400px}main{grid-template-columns:auto minmax(0,1fr);gap:36px}.play{position:sticky;top:12px}}
+/* ----- one column up to 1099px, two from 1100px; the play track is pinned to the board's width ----- */
+main{max-width:720px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
+.top{max-width:720px}
+@media (min-width:1100px){main,.top{max-width:1120px}main{grid-template-columns:min-content minmax(0,1fr);gap:36px}}
 .play,.more{min-width:0}
 h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"opsz" 72;letter-spacing:-.01em;margin:0 0 4px}
 .sub{color:var(--ink-2);font-size:15px;max-width:60ch;margin:0 0 12px}
@@ -84,7 +88,7 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .last.under{opacity:0;transition:opacity 1.2s ease .6s}
 .grid.faded .pick{opacity:0}
 .grid.faded .last.under{opacity:1}
-/* Hide: never draw Jev's marks */
+/* Hide: Jev's marks are never drawn */
 .grid.hidethoughts .heat,.grid.hidethoughts .cand,.grid.hidethoughts .truth,.grid.hidethoughts .pick,.grid.hidethoughts .pickc{display:none}
 .grid.hidethoughts .last.under{opacity:1}
 @keyframes pop{from{transform:scale(.55);opacity:.3}to{transform:scale(1);opacity:1}}
@@ -96,7 +100,7 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .ghost{position:absolute;inset:9%;border-radius:50%;z-index:2;pointer-events:none;opacity:.5;transform:scale(.94);box-shadow:0 1px 3px rgba(0,0,0,.35);animation:settle .16s ease-out,breathe 1.8s ease-in-out .16s infinite}
 .ghost.X{background:radial-gradient(circle at 34% 32%,#6a6a6a,#000)}
 .ghost.O{background:radial-gradient(circle at 34% 32%,#fff,#d0d0d0);border:1px solid #999}
-.ghost.aim{opacity:.85;animation:settle .16s ease-out,breathe 1.4s ease-in-out .16s infinite;box-shadow:0 0 0 2px var(--felt),0 1px 3px rgba(0,0,0,.35)}
+.ghost.aim{opacity:.85;box-shadow:0 0 0 2px var(--felt),0 1px 3px rgba(0,0,0,.35)}
 /* chess */
 .boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25)}
 .grid.chess .cell::before,.grid.chess .cell::after{display:none}
@@ -130,13 +134,14 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
   .grid.chess .cell:hover .target{opacity:.35}
   .grid.chess .cell.canpick:hover .piece{transform:scale(1.12) translateY(-4%);filter:drop-shadow(0 4px 4px rgba(0,0,0,.35));z-index:5}
 }
-@media (prefers-reduced-motion:reduce){.ghost,.stone.new,.captured,.grid.chess .cell.check.justchecked{animation:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick{transition:none}}
+@media (prefers-reduced-motion:reduce){.ghost,.ghost.aim,.stone.new,.captured,.grid.chess .cell.check.justchecked{animation:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick,.pickc{transition:none}}
 
 /* ----- under the board: the one line and the one action the player needs ----- */
 .scoreline{font-size:14px;color:var(--ink-2);margin-top:8px;font-variant-numeric:tabular-nums}
-.actions{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-top:12px;min-height:40px}
+.actions{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-top:12px}
 .aim{font-size:15px;color:var(--ink);flex:1 1 auto;min-width:0}
 .note{font-size:14px;color:var(--ink-2);margin-top:8px}
+.note:empty,.err:empty{display:none}
 .err{color:var(--bad);font-size:14px;margin-top:8px;white-space:pre-wrap}
 .result{margin-top:12px;padding:14px 16px;background:var(--sheet);border:1px solid var(--rule);border-left:4px solid var(--felt);border-radius:4px}
 .result .rtitle{font:600 22px/1.2 var(--serif);font-variation-settings:"opsz" 36;margin-bottom:4px}
@@ -152,36 +157,41 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .jevcard .why{margin-top:2px}
 .jevcard .legend{margin-top:6px;font-size:13px;color:var(--ink-2)}
 .replaybar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
-.replaybar input[type=range]{flex:1;min-width:140px;accent-color:var(--felt)}
+.replaybar input[type=range]{flex:1;min-width:140px;height:40px;accent-color:var(--felt)}
+.replaybar a.link{display:inline-flex;align-items:center;min-height:40px}
 .replaycap{font-size:15px;margin-top:8px}
+/* every call to Jev, right under the board */
+.calls{margin-top:22px;border-top:1px solid var(--rule);padding-top:14px}
+.calls h2{font:600 19px/1.25 var(--serif);font-variation-settings:"opsz" 24;margin:0 0 4px}
+.calls .help{margin:0 0 8px}
 
 button,select{font:inherit;font-size:15px;min-height:40px;padding:7px 14px;border-radius:4px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);cursor:pointer}
 button.primary{background:var(--felt);color:#fff;border-color:var(--felt)}
 button.primary:hover{background:var(--felt-2)}
-button.small{min-height:32px;padding:3px 10px;font-size:13px}
+button.small{padding:7px 10px;font-size:13px}
 button:disabled{opacity:.5;cursor:default}
+/* segmented choices: the chosen one is pressed in (inset shadow + tick), the others stand proud */
 .seg{display:inline-flex;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);flex-wrap:wrap;justify-self:start}
-.seg button{border:0;border-radius:0;background:transparent;padding:7px 14px;font-size:15px;color:var(--ink);min-height:40px}
+.seg button{border:0;border-radius:0;background:linear-gradient(var(--sheet),var(--paper));padding:7px 14px;font-size:15px;color:var(--ink);min-height:40px;box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
 .seg button+button{border-left:1px solid var(--rule)}
-.seg button.on{background:var(--felt);color:#fff}
+.seg button.on{background:var(--felt-2);color:#fff;box-shadow:inset 0 3px 6px rgba(0,0,0,.45),inset 0 -1px 0 rgba(255,255,255,.08)}
+.seg button.on::before{content:"✓ ";font-weight:700}
 .seg button:disabled{opacity:.5}
-.top .seg{display:flex}
-.top .seg button{flex:1 1 auto}
 a.link{color:var(--felt)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 
-/* ----- the scoresheet: collapsible sections, all quiet until opened ----- */
+/* ----- the scoresheet: collapsible sections ----- */
 details.panel{border-top:1px solid var(--rule)}
 details.panel:last-child{border-bottom:1px solid var(--rule)}
 details.panel>summary{font:600 19px/1.25 var(--serif);font-variation-settings:"opsz" 24;padding:14px 0;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px}
 details.panel>summary::-webkit-details-marker{display:none}
 details.panel>summary::after{content:"+";color:var(--ink-2);font:400 24px/1 var(--sans);flex:none}
 details.panel[open]>summary::after{content:"–"}
-details.panel>summary .cnt{font:400 14px var(--sans);color:var(--ink-2);margin-left:8px}
+.cnt{font:400 14px var(--sans);color:var(--ink-2);margin-left:8px}
 details.panel .body{padding:0 0 18px}
-details.panel h3{font:600 16px/1.3 var(--serif);margin:14px 0 6px}
-details.panel h3:first-child{margin-top:0}
+details.panel h3,.drawer h3{font:600 16px/1.3 var(--serif);margin:14px 0 6px}
 .help{font-size:14px;color:var(--ink-2);margin-top:6px;line-height:1.4;max-width:60ch}
-.setting{margin-bottom:14px}
+.setting{margin-bottom:16px}
 .setting .lab{font-size:14px;color:var(--ink-2);margin-bottom:6px}
 .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 14px;font-size:15px}
 .kv b{font-weight:400;color:var(--ink-2)}
@@ -194,33 +204,47 @@ details.panel h3:first-child{margin-top:0}
 .stat{padding:2px 0 6px}
 .stat .n{font:600 22px/1.1 var(--serif);font-variation-settings:"opsz" 36;font-variant-numeric:tabular-nums}
 .stat .l{font-size:13px;color:var(--ink-2)}
+@media (min-width:1100px){#gamestats{display:none}}
 table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
 th,td{text-align:left;padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
 th{color:var(--ink-2);font-weight:400}
 .ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--ink-2)}
 .tablewrap{overflow-x:auto;max-width:100%}
-@media (min-width:1024px){.tablewrap{max-height:320px;overflow-y:auto}.tablewrap th{position:sticky;top:0;background:var(--paper)}}
+.tablewrap a,.lb a{display:inline-block;padding:8px 6px;margin:-8px -6px}
 details.io{border-bottom:1px solid var(--rule)}
-details.io summary{cursor:pointer;padding:8px 0;font-size:14px}
+details.io summary{cursor:pointer;padding:9px 0;font-size:14px;min-height:40px}
 details.io .body{padding:0 0 12px}
 details.io h3{font:400 14px/1.3 var(--sans);margin:8px 0 4px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center}
 .io.nocall{padding:8px 0;font-size:14px;border-bottom:1px solid var(--rule);color:var(--ink-2)}
 pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre;max-width:100%}
 .lb{width:100%;border-collapse:collapse;font-size:14px}
 .lb td,.lb th{padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap}
-.marks{font-size:14px;color:var(--ink-2);line-height:1.5}
+.marks{font-size:14px;color:var(--ink-2);line-height:1.5;padding-left:18px}
 .marks li{margin:2px 0}
+
+/* ----- drawers: the menu on the left, settings on the right ----- */
+dialog.drawer{position:fixed;inset:0 auto 0 0;margin:0;height:100%;max-height:100%;width:min(380px,92vw);border:0;border-right:1px solid var(--rule);padding:0;background:var(--paper);color:var(--ink);overflow:auto}
+dialog.drawer.right{inset:0 0 0 auto;border-right:0;border-left:1px solid var(--rule)}
+dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
+.drawerhead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px 10px 16px;border-bottom:1px solid var(--rule);position:sticky;top:0;background:var(--paper)}
+.drawerhead b{font:600 19px/1 var(--serif);font-variation-settings:"opsz" 24}
+.drawerbody{padding:16px}
+.drawer details.panel>summary{padding:12px 0}
+.drawer .prose{font-size:15px;line-height:1.55}
+.drawer .prose p{margin:0 0 10px}
 </style>
 </head>
 <body>
 <header class="top">
+  <button class="iconbtn" id="menubtn" aria-label="Menu" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   <a class="brand" href="./">Beat Jev</a>
-  <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
-    <button type="button" data-v="gomoku">Gomoku</button><button type="button" data-v="go">Go</button><button type="button" data-v="chess">Chess</button>
-  </div>
-  <div class="who" id="who">
-    <div id="gsi"></div>
-    <span id="whoin" hidden><img id="whopic" alt="" hidden><span id="whoname"></span> <button class="small" id="signout">Sign out</button></span>
+  <div class="strip" id="strip" aria-label="This game's numbers"></div>
+  <div class="topright">
+    <button class="iconbtn" id="settingsbtn" aria-label="Settings" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <div class="who" id="who">
+      <div id="gsi"></div>
+      <span id="whoin" hidden><img id="whopic" alt="" hidden><span id="whoname"></span> <button class="small" id="signout">Sign out</button></span>
+    </div>
   </div>
 </header>
 <main>
@@ -236,7 +260,6 @@ pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono
       <span class="aim" id="aim" hidden></span>
       <button class="primary" id="place" hidden>Place</button>
       <button id="pass" hidden>Pass</button>
-      <button id="newgame">New game</button>
     </div>
     <div class="err" id="err" role="alert"></div>
     <div class="note" id="note"></div>
@@ -248,7 +271,7 @@ pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono
         <button class="primary" id="claimbtn">Put my name on the board</button>
         <span class="fine">Shown publicly in the hall of fame. You can do this once.</span>
       </div>
-      <div class="rsignin" id="rsignin" hidden><div id="gsi2"></div><span>Your Google first name goes on the board.</span></div>
+      <div class="rsignin" id="rsignin" hidden><div id="gsi2"></div><span id="rsigninwhy"></span></div>
       <div class="row"><button class="primary" id="again">Play again</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
     </div>
     <div class="replaybar" id="replaybar" hidden>
@@ -259,10 +282,15 @@ pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono
     </div>
     <div class="replaycap" id="replaycap"></div>
     <div class="jevcard" id="jevcard"><span class="na">Jev has not moved yet.</span></div>
+    <section class="calls" id="calls">
+      <h2>Every call to Jev<span class="cnt" id="callcnt"></span></h2>
+      <p class="help">The exact request the server sent and the raw response. This is the whole of Jev: a list of options in, one choice with a probability for each option out.</p>
+      <div id="iolog"><span class="na">No calls yet.</span></div>
+    </section>
   </section>
 
   <section class="more">
-    <details class="panel" id="p-jev">
+    <details class="panel" id="p-jev" open>
       <summary>Jev's candidates<span class="cnt" id="candcnt"></span></summary>
       <div class="body">
         <div id="thought" class="kv"><span class="na">No move yet.</span></div>
@@ -286,36 +314,20 @@ pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono
         </table></div>
       </div>
     </details>
-    <details class="panel" id="p-calls">
-      <summary>API calls<span class="cnt" id="callcnt"></span></summary>
-      <div class="body"><div id="iolog"><span class="na">No calls yet.</span></div></div>
-    </details>
-    <details class="panel" id="p-settings">
-      <summary>Settings</summary>
-      <div class="body">
-        <div class="setting"><div class="lab">Opponent mode</div>
-          <div class="seg" id="modeseg" role="radiogroup" aria-label="Mode">
-            <button type="button" data-v="player">Player</button><button type="button" data-v="assisted">Assisted</button><button type="button" data-v="naked">Naked</button>
-          </div>
-          <div class="help" id="modehelp"></div>
-        </div>
-        <div class="setting"><div class="lab">Jev's thoughts on the board</div>
-          <div class="seg" id="thoughtseg" role="radiogroup" aria-label="Jev's thoughts on the board">
-            <button type="button" data-v="fade">Fade</button><button type="button" data-v="keep">Keep</button><button type="button" data-v="hide">Hide</button>
-          </div>
-          <div class="help" id="thoughthelp"></div>
-        </div>
-        <div class="setting"><div class="lab">Who opens the next game</div>
-          <div class="seg" id="openseg" role="radiogroup" aria-label="Who opens">
-            <button type="button" data-v="you">You</button><button type="button" data-v="jev">Jev</button>
-          </div>
-          <div class="help" id="openhelp"></div>
-        </div>
-        <h3>How Jev plays this game</h3>
-        <div class="help" id="about"></div>
-        <div class="help" id="backendhelp"></div>
+  </section>
+</main>
+
+<dialog class="drawer" id="menu" aria-label="Menu">
+  <div class="drawerhead"><b>Beat Jev</b><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="drawerbody">
+    <div class="setting"><div class="lab">Game</div>
+      <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
+        <button type="button" data-v="gomoku">Gomoku</button><button type="button" data-v="go">Go</button><button type="button" data-v="chess">Chess</button>
       </div>
-    </details>
+    </div>
+    <div class="setting"><div class="lab">Start over</div>
+      <div class="row" style="margin-top:0"><button class="primary" id="newgame">New game</button><button id="newgamejev">New game, Jev opens</button></div>
+    </div>
     <details class="panel" id="p-you">
       <summary>Your games</summary>
       <div class="body">
@@ -337,35 +349,64 @@ pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono
         <div class="tablewrap" id="lb"><span class="na">Loading…</span></div>
       </div>
     </details>
-  </section>
-</main>
+    <details class="panel" id="p-about">
+      <summary>About Jev</summary>
+      <div class="body prose">
+        <p><b>Jev</b> is TypeSafe AI's System One decision model. It does not generate text. You give it a state and a typed question with a list of options, and it returns one choice with a probability for every option. That is the whole interface, which is why a call costs a fraction of a cent and answers in a few hundred milliseconds.</p>
+        <p><b>Why a board game.</b> We first tried to play Go against large language models the usual way: describe the board in text, ask for a move. It was expensive, slow, and the models hallucinated: stones that were not there, illegal points, confident nonsense. Jev cannot hallucinate a move, because it can only pick from the options it is given, and every option here is legal by construction. Code computes the position (threats, captures, material); Jev judges among the candidates. The calls under the board show exactly what it saw and what it answered.</p>
+        <p><b>What counts.</b> A game against the live Jev is recorded move by move on the server. Beat it and your name goes on the hall of fame. Sign in with Google to keep your games on any device; only a hashed id and your first name are stored, never your email.</p>
+      </div>
+    </details>
+  </div>
+</dialog>
+
+<dialog class="drawer right" id="settings" aria-label="Settings">
+  <div class="drawerhead"><b>Settings</b><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="drawerbody">
+    <div class="setting"><div class="lab">Jev's thoughts on the board</div>
+      <div class="seg" id="thoughtseg" role="radiogroup" aria-label="Jev's thoughts on the board">
+        <button type="button" data-v="fade">Fade</button><button type="button" data-v="keep">Keep</button><button type="button" data-v="hide">Hide</button>
+      </div>
+      <div class="help" id="thoughthelp"></div>
+    </div>
+    <div class="setting"><div class="lab">Opponent mode for the next game (experiments)</div>
+      <div class="seg" id="modeseg" role="radiogroup" aria-label="Mode">
+        <button type="button" data-v="player">Player</button><button type="button" data-v="assisted">Assisted</button><button type="button" data-v="naked">Naked</button>
+      </div>
+      <div class="help" id="modehelp"></div>
+    </div>
+    <h3>How Jev plays this game</h3>
+    <div class="help" id="about"></div>
+    <div class="help" id="backendhelp"></div>
+  </div>
+</dialog>
 <script>
 const CFG={
   gomoku:{ title:"Can you beat Jev at Gomoku?", name:"Gomoku", sub:"Five in a row on a 15×15 board. Black moves first.",
     about:"In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
-    size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cell:"min(calc((100vw - 74px - var(--reserve)) / 15), 40px)", endpoint:"/api/move",
+    size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cap:40, endpoint:"/api/move",
     q1:"win_now", q2:"must_block", t1:"win", t2:"block", h1:"Win detect", h2:"Block detect", l1:"wins found", l2:"forced blocks found", pass:false, ls:"jev-gomoku-v2" },
   go:{ title:"Can you beat Jev at Go?", name:"Go", sub:"9×9, area scoring, komi 7.5. Capture dead stones before you pass; two passes end the game.",
     about:"Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Positional superko. Dead stones are not removed at the end, so capture them before passing.",
-    size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(calc((100vw - 74px - var(--reserve)) / 9), 60px)", endpoint:"/api/go",
+    size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cap:60, endpoint:"/api/go",
     q1:"capture_now", q2:"must_save", t1:"capture", t2:"save", h1:"Capture detect", h2:"Save detect", l1:"captures found", l2:"saves found", pass:true, ls:"jev-go-v1" },
   chess:{ title:"Can you beat Jev at chess?", name:"chess", sub:"Tap a piece, then a square. When a pawn reaches the last rank you choose what it becomes.",
     about:"Code annotates every legal move (captures, checks, what hangs, what it threatens, what the opponent could take back) and ranks them; Jev picks. Mate in one is played by code. Rules from chess.js.",
-    size:8, cols:"abcdefgh", stars:[], cell:"min(calc((100vw - 74px - var(--reserve)) / 8), 64px)", endpoint:"/api/chess",
+    size:8, cols:"abcdefgh", stars:[], cap:64, endpoint:"/api/chess",
     q1:"mate_now", q2:"win_material", t1:"mate", t2:"material", h1:"Mate detect", h2:"Material detect", l1:"mates found", l2:"free captures found", pass:false, ls:"jev-chess-v1", chess:true },
 };
 const GLYPH={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
 const PVAL={p:1,n:3,b:3,r:5,q:9,k:0};
 const NAMEP={q:"queen",r:"rook",b:"bishop",n:"knight"};
-const LSMODE="jev-gomoku-mode", LSGAME="jev-game", LSSESSION="jev-session", LSTHOUGHTS="jev-thoughts", LSOPEN="jev-opening";
+const LSMODE="jev-gomoku-mode", LSGAME="jev-game", LSSESSION="jev-session", LSTHOUGHTS="jev-thoughts";
 const GOOGLE_CLIENT_ID="473797382868-5b8l5j9k2c3pueepgqr9hhl8e3qrvjru.apps.googleusercontent.com";
 let me=null; // { session, user:{id,name,picture}, expiresAt }
 try{ const raw=localStorage.getItem(LSSESSION); if(raw){ const v=JSON.parse(raw); if(v&&v.session&&v.expiresAt>Date.now()) me=v; } }catch{}
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
-const hoverable=window.matchMedia&&matchMedia("(hover:hover)").matches;
-let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", openSel="you", fadeTimer=null, fadeArmed=false, lastPointer="mouse";
-let ioOpen=new Set(); // which API-call entries the reader opened; survives re-renders
+let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false, lastPointer="mouse";
+let ioOpen=new Set(), ioBuiltFor=-1; // which API-call entries the reader opened, and how many turns the log was last built for
+let signinGame=null; // the game on screen when the Google button was pressed
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
 let recordBackend="mock"; try{ recordBackend=localStorage.getItem("jev-last-backend")||"mock"; }catch{}
 const lsKey=()=>cfg.ls+"::"+recordBackend;
@@ -378,34 +419,45 @@ const MODEHELP={
   naked:"An experiment. Jev sees every legal point and nothing else. The weakest, and the honest measurement."
 };
 const THOUGHTHELP={ fade:"Jev's likely moves appear after its move and fade when you start yours.", keep:"They stay on the board until Jev's next move.", hide:"Never drawn on the board." };
-const OPENHELP={ you:"You play black (white in chess) and move first.", jev:"Jev moves first; you play white (black in chess)." };
 // Server errors, in the player's words. Anything unlisted is shown as it came.
 const HUMAN_ERR={
   "bad state":"This game lost its link to the server. You can keep playing, but it will not be recorded.",
+  "stale state":"This game has moved on from that position. Reload the page to continue.",
   "not a claimable win":"This win already has a name, or it is not a recorded win.",
-  "name required":"Type a name first.", "not signed in":"Your sign-in has expired.",
-  "illegal human move":"That move is not allowed here.", "not the human's turn":"It is not your turn.", "occupied":"That point is taken.",
+  "name required":"Type a name first.", "not signed in":"Your sign-in has expired.", "game is over":"This game has already finished.",
+  "illegal human move":"That move is not allowed here.", "illegal move":"That move is not allowed here.", "not the human's turn":"It is not your turn.", "occupied":"That point is taken.",
+  "ko":"Ko: you cannot retake that point straight away. Play somewhere else first.", "superko":"That would repeat a position already played.", "suicide":"That stone would have no liberties.",
 };
 const friendly=(m)=>HUMAN_ERR[m]||(/^HTTP|^Failed to fetch|NetworkError/.test(m)?"The server did not answer. Check your connection and try again.":m);
-try{ const m=localStorage.getItem(LSMODE); if(MODEHELP[m]) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; const t=localStorage.getItem(LSTHOUGHTS); if(THOUGHTHELP[t]) thoughtsSel=t; const o=localStorage.getItem(LSOPEN); if(OPENHELP[o]) openSel=o; }catch{}
+try{ const m=localStorage.getItem(LSMODE); if(MODEHELP[m]) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; const t=localStorage.getItem(LSTHOUGHTS); if(THOUGHTHELP[t]) thoughtsSel=t; }catch{}
+
+// The board is measured from its column, never from the viewport, so scrollbars and gutters cannot push it out.
+function fitBoard(){
+  if(!cfg) return;
+  const wide=window.matchMedia&&matchMedia("(min-width:1100px)").matches;
+  const avail= wide ? Infinity : document.querySelector(".play").clientWidth; // in two columns the track is the board itself
+  const cell=Math.max(12,Math.min(cfg.cap,Math.floor((avail-42)/cfg.size)));
+  gridEl.style.setProperty("--cell",cell+"px");
+}
+addEventListener("resize",fitBoard);
 
 function newGame(jev){
   leaveReplay();
-  cfg=CFG[gameSel]; score=loadScore(); ioOpen=new Set();
+  cfg=CFG[gameSel]; score=loadScore(); ioOpen=new Set(); ioBuiltFor=-1;
   const empty=Array.from({length:cfg.size},()=>".".repeat(cfg.size));
-  S={ game:gameSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, aim:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
-      legal:[], sel:null, inCheck:false, result:null, lastMove:null, token:null, gameId:null, verified:false, claimed:null, owner:null, flip: !!cfg.chess && jev==="X" };
+  S={ game:gameSel, mode:modeSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, aim:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
+      legal:[], sel:null, inCheck:false, result:null, lastMove:null, token:null, gameId:null, verified:false, owner:null, flip: !!cfg.chess && jev==="X" };
   if(cfg.chess){ S.board=["rnbqkbnr","pppppppp","........","........","........","........","PPPPPPPP","RNBQKBNR"]; }
   $("err").textContent=""; $("note").textContent=""; $("claimbtn").disabled=false; $("claimname").value="";
   buildGrid();
 }
-// One entry point for every "start over": honours the opening setting and never throws away an unnamed win silently.
-function startNew(){
-  if(S&&S.busy) return;
-  if(S&&S.status==="human_wins"&&S.verified&&S.backend==="native"&&!S.owner&&!S.claimed){ if(!confirm("Start a new game without putting your name on the board?")) return; }
-  const jev= openSel==="jev" ? "X" : "O";
+// The one "start over" entry: never throws away an unnamed win silently. jev = "X" means Jev opens.
+function startNew(jev="O"){
+  if(S&&S.busy) return false;
+  if(S&&S.status==="human_wins"&&S.verified&&S.backend==="native"&&!S.owner){ if(!confirm("Start a new game without putting your name on the board?")) return false; }
   newGame(jev); render();
   if(cfg.chess||jev==="X") play(null);
+  return true;
 }
 function toMove(){ return S.moves.length%2===0?"X":"O"; }
 function keyOf(r,c){ return cfg.cols[c]+(cfg.size-r); }
@@ -414,8 +466,8 @@ function buildGrid(){
   gridEl.innerHTML="";
   gridEl.classList.toggle("chess",!!cfg.chess);
   document.querySelector(".boardwrap").classList.toggle("chess",!!cfg.chess);
+  fitBoard();
   if(cfg.chess){
-    gridEl.style.setProperty("--cell",cfg.cell);
     gridEl.style.gridTemplateColumns=`22px repeat(8, var(--cell))`;
     gridEl.style.gridTemplateRows=`18px repeat(8, var(--cell))`;
     gridEl.appendChild(Object.assign(document.createElement("div"),{className:"lbl"}));
@@ -433,7 +485,6 @@ function buildGrid(){
     }
     return;
   }
-  gridEl.style.setProperty("--cell",cfg.cell);
   gridEl.style.gridTemplateColumns=`22px repeat(${cfg.size}, var(--cell))`;
   gridEl.style.gridTemplateRows=`18px repeat(${cfg.size}, var(--cell))`;
   gridEl.appendChild(Object.assign(document.createElement("div"),{className:"lbl"}));
@@ -454,6 +505,8 @@ function buildGrid(){
   }
 }
 gridEl.addEventListener("pointerdown",(e)=>{ lastPointer=e.pointerType||"mouse"; },{passive:true});
+// "Fade" means: Jev's marks leave when you start your move. Aiming, selecting a piece and passing all count.
+function startingMove(){ if(thoughtsSel==="fade"){ clearTimeout(fadeTimer); gridEl.classList.add("faded"); } }
 // Stones: a mouse commits on click (the hover ghost was the preview). A finger aims first and commits on the
 // second tap or the Place button, because a 15×15 board on a phone is about 21px per point.
 function onCell(r,c){
@@ -461,7 +514,7 @@ function onCell(r,c){
   if(toMove()!==S.human) return;
   if(S.board[r][c]!==".") return;
   const k=keyOf(r,c);
-  if(lastPointer==="touch"&&S.aim!==k){ S.aim=k; if(thoughtsSel==="fade") gridEl.classList.add("faded"); render(); return; }
+  if(lastPointer==="touch"&&S.aim!==k){ S.aim=k; startingMove(); render(); return; }
   S.aim=null; play(k);
 }
 
@@ -479,7 +532,7 @@ function onSquare(sq){
     if(ownPiece(ch)&&sq!==S.sel){ S.sel=sq; render(); return; }
     S.sel=null; render(); return;
   }
-  if(ownPiece(ch)&&S.legal.some(m=>m.from===sq)){ S.sel=sq; render(); }
+  if(ownPiece(ch)&&S.legal.some(m=>m.from===sq)){ S.sel=sq; startingMove(); render(); }
 }
 const JEV_MIN_GAP=450; // ms between showing your move and showing Jev's reply
 function applyLocalChess(m){
@@ -506,13 +559,14 @@ async function play(humanMove,localMove){
   const t0=performance.now();
   S.busy=true; S.pending=humanMove; S.aim=null; $("err").textContent=""; render();
   try{
-    const body={moves:snapshot?snapshot.moves:S.moves,humanMove,jev:S.jev,mode:modeSel};
+    const post=(body)=>fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    const body={moves:snapshot?snapshot.moves:S.moves,humanMove,jev:S.jev,mode:S.mode};
     if(me) body.session=me.session;
-    if(S.game==="gomoku") body.board=S.board;
+    if(S.game==="gomoku") body.board=S.board; // the server validates the board even when the token carries it
     if(S.token) body.state=S.token;
-    let r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    let r=await post(body);
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
-    if(!d.ok&&d.error==="bad state"&&body.state){ delete body.state; S.token=null; $("note").textContent=friendly("bad state"); r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}); try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); } }
+    if(!d.ok&&d.error==="bad state"&&body.state){ delete body.state; S.token=null; $("note").textContent=friendly("bad state"); r=await post(body); try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); } }
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
     if(cfg.chess&&d.jev){
       const wait=JEV_MIN_GAP-(performance.now()-t0); if(wait>0) await new Promise(res=>setTimeout(res,wait));
@@ -527,7 +581,9 @@ async function play(humanMove,localMove){
     }
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend; syncRecordBackend(d.backend);
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
-    S.token=d.state||null; S.gameId=d.gameId||S.gameId; S.verified=!!d.verified; S.owner=d.owner||S.owner||null;
+    S.token=d.state||null; S.gameId=d.gameId||S.gameId; S.verified=!!d.verified;
+    S.owner=S.owner||d.owner||null; // first write wins, like the record itself
+    if(me&&d.verified&&!d.owner) signedOut("Your sign-in expired. Sign in again to keep your games."); // the server no longer accepts the session
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(true); if(me&&S.verified) loadMyGames(); }
@@ -538,11 +594,11 @@ async function play(humanMove,localMove){
 let thoughtsShownAt=0;
 function scheduleFade(){
   clearTimeout(fadeTimer); fadeArmed=false; gridEl.classList.remove("faded"); thoughtsShownAt=performance.now();
-  if(thoughtsSel!=="fade"||!hoverable) return; // on touch the thoughts stay until you aim your next stone
+  if(thoughtsSel!=="fade"||lastPointer==="touch") return; // on touch the thoughts stay until you aim your next stone
   fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),5000);
 }
 gridEl.addEventListener("pointermove",(e)=>{
-  if(!hoverable||e.pointerType==="touch") return;
+  if(e.pointerType==="touch") return;
   if(thoughtsSel!=="fade"||fadeArmed||!S||!S.last||S.busy||gridEl.classList.contains("faded")) return;
   if(performance.now()-thoughtsShownAt<1500) return; // give the thoughts a moment before a stray mouse move dismisses them
   fadeArmed=true; clearTimeout(fadeTimer); fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),900);
@@ -576,13 +632,15 @@ function verdictCell(v,truthLen){
   return `<span class="na">– none</span>`;
 }
 const pct=(a,b)=> b? Math.round(100*a/b)+"%" : "–";
-const tokens=(t)=> (t.usage&&t.usage.input!=null) ? `${t.usage.input} in / ${t.usage.output} out` : "tokens n/a";
+const tokens=(t)=> (t.usage&&t.usage.input!=null) ? `${t.usage.input} in / ${t.usage.output} out tokens` : "tokens n/a";
 const stat=(n,l)=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`;
 const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String(o); } };
 
 function renderIO(){
   const calls=S.turns.filter(t=>t.io).length; $("callcnt").textContent=calls?`(${calls})`:"";
-  if(!S.turns.length){ $("iolog").innerHTML=`<span class="na">No calls yet.</span>`; return; }
+  if(!S.turns.length){ $("iolog").innerHTML=`<span class="na">No calls yet.</span>`; ioBuiltFor=0; return; }
+  if(ioBuiltFor===S.turns.length) return; // nothing new: keep the reader's scroll and selection
+  ioBuiltFor=S.turns.length;
   $("iolog").innerHTML=S.turns.map((t,i)=>{
     if(!t.io) return `<div class="io nocall"><span>Move ${i+1}: ${esc(t.move)} via ${esc(t.source)}, decided by code, no call to Jev${t.note?" ("+esc(t.note)+")":""}</span></div>`;
     const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
@@ -642,7 +700,7 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
 // the candidate carried. Forced moves say so; the researcher's detail lives in "Jev's candidates".
 function renderJevCard(pickP){
   const t=S.last, card=$("jevcard");
-  if(!t){ card.innerHTML=`<span class="na">${S.status==="replay"?"Human to move.":"Jev has not moved yet."}</span>`; return; }
+  if(!t){ card.innerHTML=`<span class="na">${S.status==="replay"?"The human played this move; Jev's answer is the next one.":"Jev has not moved yet."}</span>`; return; }
   const cand=(t.candidates||[]).find(c=>c.key===t.move);
   const why=(cand?cand.desc:(t.note||"")).replace(/^pass\.\s*/,""); // the pass option's text starts with its own name
   const shown=t.shown||t.move, p= pickP!==undefined ? pickP : t.pickShown; // replays carry the move and its probability separately
@@ -656,7 +714,7 @@ function renderJevCard(pickP){
 
 function renderResult(){
   const box=$("result"); const over=S.status!=="playing"&&S.status!=="replay";
-  box.hidden=!over; $("actions").hidden=over||S.status==="replay";
+  box.hidden=!over;
   if(!over) return;
   const won=S.status==="human_wins";
   let title;
@@ -665,15 +723,16 @@ function renderResult(){
   else title= cfg.chess ? `Draw: ${S.result||"draw"}.` : "Draw. Board full.";
   $("rtitle").textContent=title;
   let note="", claim=false, signin=false, replay=false;
-  if(S.backend==="mock") note="A practice game against the stand-in opponent, so it is not recorded.";
+  if(S.backend==="mock"){ note="A practice game against the stand-in opponent. It is saved, but it never counts for the hall of fame."; replay=S.verified; }
   else if(!S.verified) note="This game lost its link to the server, so it is not recorded.";
   else if(won){
     replay=true;
-    if(S.claimed) note=`On the board as ${S.claimed}.`;
-    else if(S.owner) note=`On the board as ${S.owner}.`;
+    if(S.owner) note=`On the board as ${S.owner}.`;
     else { note="You beat the real Jev. Put a name on the hall of fame, or sign in to use your Google name."; claim=true; signin=!me; }
   } else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : (me ? "Saved." : "Sign in to keep this game under your name."); signin=!me; }
   $("rnote").textContent=note; $("claim").hidden=!claim; $("rsignin").hidden=!signin;
+  $("rsigninwhy").textContent= won ? "Your Google first name goes on the board." : "Your games then follow your account to any device.";
+  if(signin&&!$("gsi2").firstChild) renderGsi(); // the button is drawn only once its box is visible
   const a=$("rreplay"); a.hidden=!(replay&&S.gameId); if(S.gameId) a.href=`?replay=${encodeURIComponent(S.gameId)}`;
   $("share").hidden=!(replay&&S.gameId);
 }
@@ -686,6 +745,21 @@ $("share").addEventListener("click",async()=>{
   const s=shareText(); const b=$("share");
   try{ if(navigator.share) await navigator.share({ text:s.text, url:s.url }); else { await navigator.clipboard.writeText(s.text); b.textContent="Copied"; setTimeout(()=>b.textContent="Share",1400); } }catch{}
 });
+
+function gameNumbers(){
+  const g={moves:S.turns.length,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
+  for(const x of S.turns){
+    if(x.answers){ g.calls++; g.latency+=x.latencyMs||0; if(x.usage&&typeof x.usage.input==="number"){ g.tokens+=x.usage.input; g.tokenCalls++; } } else g.forced++;
+    if(x.heuristicRank){ g.ranked++; if(x.heuristicRank===1) g.agree++; }
+    if(x.verdict){
+      const T1=(x.truth&&x.truth[cfg.t1])||[], T2=(x.truth&&x.truth[cfg.t2])||[];
+      if(T1.length){ g.q1Opp++; if(x.verdict[cfg.t1]==="found") g.q1Found++; }
+      if(T2.length){ g.q2Need++; if(x.verdict[cfg.t2]==="found") g.q2Found++; }
+      if(x.verdict[cfg.t1]==="false") g.falseClaims++; if(x.verdict[cfg.t2]==="false") g.falseClaims++;
+    }
+  }
+  return g;
+}
 
 function render(light){
   $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2; $("about").textContent=cfg.about;
@@ -710,7 +784,7 @@ function render(light){
     if(ch!=="."){
       const st=document.createElement("span"); st.className="stone "+ch+(k===lastKey&&k!==S._animated?" new":""); cell.appendChild(st);
       if(k===lastKey){
-        if(pickP!==undefined && ch===S.jev && thoughtsSel!=="hide"){
+        if(pickP!==undefined && ch===S.jev){
           const l=document.createElement("span"); l.className="last under"; cell.appendChild(l);
           const pk=document.createElement("span"); pk.className="pick "+ch; pk.textContent=Math.round(pickP*100)+"%"; cell.appendChild(pk);
         } else { const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
@@ -732,7 +806,7 @@ function render(light){
   else if(S.status!=="playing") msg= S.status==="human_wins" ? "Game over. You win." : S.status==="jev_wins" ? "Game over. Jev wins." : "Game over. Draw.";
   else if(cfg.chess) msg=`Your move. You are ${S.human==="X"?"White":"Black"}.`+(S.inCheck?" Check!":"")+(S.promo?" Choose a piece to promote to.":S.sel?` ${S.sel} selected.`:"");
   else msg=`Your move. You are ${you}.`+(lastKey==="pass"?" Jev passed.":"");
-  $("status").textContent=msg;
+  const st=$("status"); if(st.textContent!==msg) st.textContent=msg; // a live region: only real changes are announced
   // the record chip: does this game count?
   const chip=$("recchip"); const be=S.backend;
   if(S.status==="replay"||!be){ chip.hidden=true; }
@@ -742,7 +816,8 @@ function render(light){
   const aiming=!!S.aim&&S.status==="playing"&&!S.busy;
   $("aim").hidden=!aiming; $("place").hidden=!aiming; if(aiming){ $("aim").textContent=`${S.aim}. Tap again to place, or tap another point.`; $("place").textContent=`Place ${S.aim}`; }
   $("pass").hidden=!cfg.pass||S.status!=="playing"; $("pass").disabled=locked;
-  $("newgame").disabled=S.busy; $("again").disabled=S.busy;
+  $("actions").hidden=S.status!=="playing"||(!aiming&&!cfg.pass);
+  $("newgame").disabled=S.busy; $("newgamejev").disabled=S.busy; $("again").disabled=S.busy;
   renderResult();
   let sl="";
   if(cfg.chess){ let w=0,b=0; for(const row of S.board) for(const ch of row){ if(ch===".") continue; const v=PVAL[ch.toLowerCase()]||0; if(ch===ch.toUpperCase()) w+=v; else b+=v; } sl=`Material: White ${w}, Black ${b}`; }
@@ -756,8 +831,8 @@ function render(light){
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy||!!R; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
   for(const b of $("modeseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===modeSel); b.setAttribute("aria-checked",b.dataset.v===modeSel); }
   for(const b of $("thoughtseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===thoughtsSel); b.setAttribute("aria-checked",b.dataset.v===thoughtsSel); }
-  for(const b of $("openseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===openSel); b.setAttribute("aria-checked",b.dataset.v===openSel); }
-  $("modehelp").textContent=MODEHELP[modeSel]||""; $("thoughthelp").textContent=THOUGHTHELP[thoughtsSel]||""; $("openhelp").textContent=OPENHELP[openSel]||"";
+  $("modehelp").textContent=(MODEHELP[modeSel]||"")+(S.status==="playing"&&S.moves.length&&S.mode!==modeSel?" Applies to your next game; this one stays in "+S.mode+" mode.":"");
+  $("thoughthelp").textContent=THOUGHTHELP[thoughtsSel]||"";
   renderJevCard(pickP);
 
   const t=S.last;
@@ -771,7 +846,7 @@ function render(light){
       }
     }
     if(t.answers) rows.push(`<b>best_move</b><span>${t.answers.best_move.top.map(([k,p])=>`${esc(k)} ${Math.round(p*100)}%`).join(", ")} · conf ${t.answers.best_move.confidence}</span>`);
-    rows.push(`<b>call</b><span>${t.answers?`${t.latencyMs} ms · ${t.optionCount} options · ${esc(tokens(t))} tokens · ${esc(t.model||"")}`:"none"}</span>`);
+    rows.push(`<b>call</b><span>${t.answers?`${t.latencyMs} ms · ${t.optionCount} options · ${esc(tokens(t))} · ${esc(t.model||"")}`:"none"}</span>`);
     $("thought").innerHTML=rows.join("");
     if(t.candidates&&t.candidates.length){
       const probs=Object.fromEntries((t.answers?t.answers.best_move.top:[]));
@@ -783,22 +858,12 @@ function render(light){
   if(lastKey) S._animated=lastKey;
   if(light) return; // replay scrubbing: the board and the cards are enough
 
-  const g={moves:S.turns.length,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
-  for(const x of S.turns){
-    if(x.answers){ g.calls++; g.latency+=x.latencyMs||0; if(x.usage&&typeof x.usage.input==="number"){ g.tokens+=x.usage.input; g.tokenCalls++; } } else g.forced++;
-    if(x.heuristicRank){ g.ranked++; if(x.heuristicRank===1) g.agree++; }
-    if(x.verdict){
-      const T1=(x.truth&&x.truth[cfg.t1])||[], T2=(x.truth&&x.truth[cfg.t2])||[];
-      if(T1.length){ g.q1Opp++; if(x.verdict[cfg.t1]==="found") g.q1Found++; }
-      if(T2.length){ g.q2Need++; if(x.verdict[cfg.t2]==="found") g.q2Found++; }
-      if(x.verdict[cfg.t1]==="false") g.falseClaims++; if(x.verdict[cfg.t2]==="false") g.falseClaims++;
-    }
-  }
+  const g=gameNumbers();
   $("movecnt").textContent=g.moves?`(${g.moves} by Jev)`:"";
-  $("gamestats").innerHTML=
-    stat(g.moves,"Jev moves")+stat(g.forced,"played by code")+stat(g.calls,"Jev calls")+stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
+  $("gamestats").innerHTML=stat(g.moves,"Jev moves")+stat(g.forced,"played by code")+stat(g.calls,"Jev calls")+stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
     stat(`${g.q1Found}/${g.q1Opp}`,cfg.l1)+stat(`${g.q2Found}/${g.q2Need}`,cfg.l2)+
     stat(g.calls?Math.round(g.latency/g.calls):"–","avg ms per call")+stat(g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","avg input tokens");
+  $("strip").innerHTML=[[g.moves,"Jev moves"],[g.forced,"by code"],[g.calls,"calls"],[`${g.agree}/${g.ranked}`,"heuristic #1"],[g.calls?Math.round(g.latency/g.calls)+" ms":"–","per call"],[g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","tokens in"]].map(([n,l])=>`<span><b>${n}</b>${l}</span>`).join("");
   $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t1],((x.truth&&x.truth[cfg.t1])||[]).length)}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t2],((x.truth&&x.truth[cfg.t2])||[]).length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${esc(x.usage&&x.usage.input!=null?x.usage.input:"–")}</td></tr>`).join("");
   renderIO();
 
@@ -810,6 +875,15 @@ function render(light){
     stat(score.calls?Math.round(score.latency/score.calls):"–","avg ms per call");
 }
 
+// ---- drawers ----
+function openDrawer(id){ const d=$(id); if(!d.open) d.showModal(); }
+for(const d of document.querySelectorAll("dialog.drawer")){
+  d.addEventListener("click",(e)=>{ if(e.target===d) d.close(); }); // the backdrop
+  for(const b of d.querySelectorAll("[data-close]")) b.addEventListener("click",()=>d.close());
+}
+$("menubtn").addEventListener("click",()=>openDrawer("menu"));
+$("settingsbtn").addEventListener("click",()=>openDrawer("settings"));
+
 // ---- sign in with Google ----
 function renderWho(){
   $("whoin").hidden=!me; $("gsi").hidden=!!me; $("whohelp").hidden=!!me; $("mine").hidden=!me;
@@ -819,7 +893,7 @@ function renderGsi(){
   if(!window.google||!google.accounts) return;
   for(const [id,opts] of [["gsi",{size:"medium",text:"signin"}],["gsi2",{size:"large",text:"signin_with",width:"260"}]]){
     const el=$(id); el.innerHTML="";
-    if(!me) google.accounts.id.renderButton(el,{ theme:"outline", shape:"pill", logo_alignment:"left", locale:"en_US", ...opts });
+    if(!me) google.accounts.id.renderButton(el,{ theme:"outline", shape:"pill", logo_alignment:"left", locale:"en_US", click_listener:()=>{ signinGame=S; }, ...opts });
   }
 }
 window.gsiReady=function(){
@@ -827,18 +901,22 @@ window.gsiReady=function(){
   google.accounts.id.initialize({ client_id:GOOGLE_CLIENT_ID, callback:onGoogleCredential, auto_select:false, ux_mode:"popup" });
   renderGsi();
 };
+window.gsiFailed=function(){ // the Google script did not load (blocked or offline): say so instead of showing an empty slot
+  $("gsi").innerHTML=""; $("rsignin").hidden=true;
+  $("whohelp").textContent="Google sign-in could not load here. You can still play, and put a name on the board when you win.";
+};
 function signedOut(msg){
   me=null; try{ localStorage.removeItem(LSSESSION); }catch{}
   renderWho(); renderGsi(); if(msg) $("note").textContent=msg;
 }
 async function onGoogleCredential(resp){
   try{
-    const game=S; // the game on screen when sign-in started; a slow response must not brand a later game
+    const game=signinGame||S; signinGame=null; // the game on screen when the button was pressed; a slow response must not brand a later game
     const body={credential:resp.credential}; if(game&&game.token&&game.verified) body.state=game.token; // attach it, even after its last move
     const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json(); if(!d.ok) throw new Error(d.error||"sign-in failed");
     me={session:d.session,user:d.user,expiresAt:d.expiresAt}; try{ localStorage.setItem(LSSESSION,JSON.stringify(me)); }catch{}
-    if(game&&S===game){ if(d.attached) game.owner=(d.game&&d.game.name)||me.user.name; else if(game.verified&&game.status==="playing") game.owner=game.owner||me.user.name; }
+    if(game&&S===game&&d.attached){ game.owner=(d.game&&d.game.name)||me.user.name; if(game.status==="human_wins"&&game.backend==="native") loadLeaderboard(true); }
     $("note").textContent=""; renderWho(); renderGsi(); loadMyGames(); render();
   }catch(e){ $("err").textContent="Sign-in failed: "+friendly(e.message); }
 }
@@ -856,7 +934,7 @@ async function loadMyGames(){
     const st=d.stats; $("mystats").innerHTML=stat(st.games,"finished")+stat(st.wins,"won")+stat(st.losses,"lost")+stat(st.draws,"drawn");
     const label={gomoku:"Gomoku",go:"Go",chess:"chess"};
     $("mygames").innerHTML= d.games.length ? `<table class="lb"><thead><tr><th>When</th><th>Game</th><th>Mode</th><th>Result</th><th>Plies</th><th></th></tr></thead><tbody>`+
-      d.games.map(g=>`<tr><td>${g.created_at?new Date(g.created_at).toLocaleDateString():""}</td><td>${label[g.game]||esc(g.game)}</td><td>${esc(g.mode)}</td><td>${g.result==="human_wins"?"you won":g.result==="jev_wins"?"Jev won":g.result==="draw"?"draw":"unfinished"}</td><td>${g.plies}</td><td><a href="?replay=${esc(g.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`
+      d.games.map(g=>`<tr><td>${g.created_at?new Date(g.created_at).toLocaleDateString():""}</td><td>${label[g.game]||esc(g.game)}${g.backend==="mock"?" (practice)":""}</td><td>${esc(g.mode)}</td><td>${g.result==="human_wins"?"you won":g.result==="jev_wins"?"Jev won":g.result==="draw"?"draw":"unfinished"}</td><td>${g.plies}</td><td><a href="?replay=${esc(g.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`
       : `<span class="na">No games yet under this account. Finish one and it appears here.</span>`;
   }catch(e){ $("mine").hidden=false; $("mygames").innerHTML=`<span class="na">Could not load your games (${esc(friendly(e.message))}).</span>`; }
 }
@@ -877,9 +955,10 @@ async function loadLeaderboard(fresh){
 $("claimbtn").addEventListener("click",async()=>{
   const name=$("claimname").value.trim(); if(!name){ $("claimname").focus(); return; }
   $("claimbtn").disabled=true;
-  try{ const r=await fetch("/api/claim",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state:S.token,name})}); const d=await r.json(); if(!d.ok) throw new Error(d.error); S.claimed=d.name; render(); loadLeaderboard(true); }
+  try{ const r=await fetch("/api/claim",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state:S.token,name})}); const d=await r.json(); if(!d.ok) throw new Error(d.error); S.owner=d.name; render(); loadLeaderboard(true); }
   catch(e){ $("err").textContent="Could not record the name: "+friendly(e.message); $("claimbtn").disabled=false; }
 });
+$("claimname").addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); $("claimbtn").click(); } });
 
 // ---- replay ----
 let R=null; // {game, turns, k}
@@ -896,12 +975,19 @@ function leaveReplay(){
   R=null; $("replaybar").hidden=true; $("replaycap").textContent="";
   if(location.search) history.replaceState(null,"","./");
 }
+// Go captures are not stored per ply; count the stones that vanished between consecutive boards.
+function replayCaptures(k){
+  const cap={X:0,O:0};
+  for(let i=1;i<=k;i++){ const a=R.turns[i-1].board, b=R.turns[i].board; for(let r=0;r<a.length;r++) for(let c=0;c<a[r].length;c++){ if(a[r][c]!=="."&&b[r][c]==="."){ if(a[r][c]==="X") cap.O++; else cap.X++; } } }
+  return cap;
+}
 function showReplay(light){
   const t=R.turns[R.k]; if(!t) return;
   S.board=t.board;
   const color=(side)=> side==="jev"?S.jev:S.human;
   S.moves=R.turns.slice(0,R.k+1).map(x=> cfg.chess ? x.move : `${color(x.side)} ${x.move}`);
   S.turns=R.turns.filter(x=>x.side==="jev"&&x.ply<=t.ply).map(x=>({ move:x.move, source:x.source, latencyMs:x.latencyMs, usage:{input:x.inputTokens,output:x.outputTokens}, io:x.io, answers:x.heat?{best_move:{top:x.heat,confidence:""}}:null, model:"" }));
+  if(S.game==="go") S.captures=replayCaptures(R.k);
   if(t.side==="jev"){
     const heat=t.heat||[]; const played=cfg.chess?"__played__":t.move;
     S.last={ move:played, shown:t.move, pickShown:t.pick, source:t.source, heuristicRank:t.heuristicRank, note:null, truth:null, verdict:t.verdict, candidates:[], latencyMs:t.latencyMs, optionCount:null, usage:{input:t.inputTokens,output:t.outputTokens}, model:R.game.model||"",
@@ -912,7 +998,7 @@ function showReplay(light){
   const who= t.side==="jev" ? "Jev" : "Human";
   const result= R.game.result==="human_wins"?"a human win":R.game.result==="jev_wins"?"Jev won":R.game.result==="draw"?"a draw":"unfinished";
   $("replaycap").innerHTML=`Move ${t.ply+1} of ${R.turns.length}: <b>${who}</b> played <b>${esc(t.move)}</b>`+(t.side==="jev"?` via ${esc(t.source)}${t.heuristicRank?`, heuristic #${t.heuristicRank}`:""}${t.pick!=null?`, Jev gave it ${Math.round(t.pick*100)}%`:""}`:"")+
-    `. <span class="na">${esc(result)}, ${esc(R.game.mode)} mode, ${esc(R.game.model||R.game.backend)}${R.game.name?", winner "+esc(R.game.name):""}</span>`;
+    `. <span class="na">${esc(result)}, ${esc(R.game.mode)} mode, ${esc(R.game.model||R.game.backend)}${R.game.result==="human_wins"&&R.game.name?", winner "+esc(R.game.name):""}</span>`;
   gridEl.classList.remove("faded"); render(light);
 }
 function stepReplay(k,light){ if(!R) return; R.k=Math.max(0,Math.min(R.turns.length-1,k)); showReplay(light); }
@@ -920,26 +1006,31 @@ $("rpfirst").addEventListener("click",()=>stepReplay(0)); $("rplast").addEventLi
 $("rpprev").addEventListener("click",()=>stepReplay(R?R.k-1:0)); $("rpnext").addEventListener("click",()=>stepReplay(R?R.k+1:0));
 $("rprange").addEventListener("input",()=>stepReplay(Number($("rprange").value),true));
 $("rprange").addEventListener("change",()=>stepReplay(Number($("rprange").value)));
-document.addEventListener("keydown",(e)=>{ if(!R) return; if(e.key==="ArrowLeft") stepReplay(R.k-1); if(e.key==="ArrowRight") stepReplay(R.k+1); });
+document.addEventListener("keydown",(e)=>{ if(!R||e.target===$("rprange")||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return; if(e.key==="ArrowLeft") stepReplay(R.k-1); if(e.key==="ArrowRight") stepReplay(R.k+1); });
 $("rpexit").addEventListener("click",(e)=>{ e.preventDefault(); startNew(); });
 
-$("newgame").addEventListener("click",startNew);
-$("again").addEventListener("click",startNew);
+$("newgame").addEventListener("click",()=>{ if(startNew("O")) $("menu").close(); });
+$("newgamejev").addEventListener("click",()=>{ if(startNew("X")) $("menu").close(); });
+$("again").addEventListener("click",()=>startNew(S&&S.jev==="X"?"X":"O"));
 $("place").addEventListener("click",()=>{ if(S&&S.aim){ const k=S.aim; S.aim=null; play(k); } });
-$("pass").addEventListener("click",()=>{ if(S.game==="go"){ S.aim=null; play("pass"); } });
+$("pass").addEventListener("click",()=>{ if(S.game==="go"){ S.aim=null; startingMove(); play("pass"); } });
 $("resetscore").addEventListener("click",()=>{ if(!confirm("Reset the tally kept on this device? Recorded games and the hall of fame are not affected.")) return; score={...DEFAULT_SCORE}; saveScore(); render(); });
 for(const b of $("modeseg").querySelectorAll("button")) b.addEventListener("click",()=>{ modeSel=b.dataset.v; try{ localStorage.setItem(LSMODE,modeSel); }catch{} render(); });
 for(const b of $("thoughtseg").querySelectorAll("button")) b.addEventListener("click",()=>{ thoughtsSel=b.dataset.v; try{ localStorage.setItem(LSTHOUGHTS,thoughtsSel); }catch{} scheduleFade(); render(); });
-for(const b of $("openseg").querySelectorAll("button")) b.addEventListener("click",()=>{ openSel=b.dataset.v; try{ localStorage.setItem(LSOPEN,openSel); }catch{} render(); });
-for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||R||b.dataset.v===gameSel) return; const prev=gameSel; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} const before=S; startNew(); if(S===before){ gameSel=prev; return; } loadLeaderboard(); });
+for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{
+  if(S.busy||R||b.dataset.v===gameSel) return;
+  const prev=gameSel; gameSel=b.dataset.v;
+  if(!startNew("O")){ gameSel=prev; return; } // declined: nothing changes, nothing is remembered
+  try{ localStorage.setItem(LSGAME,gameSel); }catch{}
+  loadLeaderboard(); $("menu").close();
+});
 
-// On a wide screen the scoresheet has room, so the two sections a spectator reads most start open.
-if(window.matchMedia&&matchMedia("(min-width:1024px)").matches){ for(const id of ["p-jev","p-lb"]) $(id).open=true; }
 renderWho(); if(me) loadMyGames();
-if(window.__gsiLoaded||(window.google&&google.accounts)) window.gsiReady(); // the Google script may have finished before this script ran
+if(window.__gsiLoaded) window.gsiReady(); // the Google script may have finished before this script ran
+if(window.__gsiFailed) window.gsiFailed();
 const replayId=new URLSearchParams(location.search).get("replay");
 if(replayId){ newGame("O"); render(); startReplay(replayId).catch(e=>{ $("err").textContent=friendly(e.message); }); loadLeaderboard(); }
-else { const jev= openSel==="jev" ? "X" : "O"; newGame(jev); render(); loadLeaderboard(); if(cfg.chess||jev==="X") play(null); }
+else { startNew("O"); loadLeaderboard(); }
 </script>
 </body>
 </html>

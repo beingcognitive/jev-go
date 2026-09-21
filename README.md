@@ -26,13 +26,15 @@ panel, one expandable entry per move, with copy buttons.
 
 ## The page
 
-Built phone-first. The board is sized from the viewport so it never scrolls sideways; on a phone a
+Built phone-first. The board is measured from its column so it never scrolls sideways; on a phone a
 first tap aims a stone (a ghost appears with a "Place H8" button) and a second tap plays it, while a
-mouse previews on hover and plays on click. Under the board: the status line with the record chip,
-the one action that matters (Place, Pass, New game), the result card at game end, and a one-line
-card saying what Jev played, how sure it was and why. Everything for the researcher (Jev's candidate
-list, the per-move table, the API calls, the settings, your games, the hall of fame) sits in
-collapsible sections below; on a wide screen the board column sticks while you read them.
+mouse previews on hover and plays on click. Under the board: the status line with the record chip
+(Recorded, Recorded as Name, Practice opponent, Not recorded), Pass or Place when needed, the result
+card at game end, a one-line card saying what Jev played, how sure it was and why, and then every
+call to Jev with the exact request and raw response. The top bar holds the menu (game, new game,
+your games, hall of fame, about Jev), this game's numbers in the centre on wide screens, the
+settings (thoughts on the board, the experiment modes) and sign-in. Jev's candidate list and the
+per-move table sit beside the board on wide screens and below it on a phone.
 
 ## Go 9×9
 

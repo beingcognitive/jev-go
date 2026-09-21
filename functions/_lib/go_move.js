@@ -97,13 +97,14 @@ export function buildGoPlayerRequest(st, moves, me, opp, plan) {
 export async function handleGoMove(body, env = {}) {
   try {
     const { moves = [], humanMove = null, jev = "O", state = null } = body || {};
-    const mode = normalizeMode(body && body.mode);
+    let mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
     if (!Array.isArray(moves) || moves.length > Go.MAX_MOVES) throw new Error(`moves must be an array of at most ${Go.MAX_MOVES} moves`);
     const me = jev, opp = Go.other(jev);
     const be = backend(env);
     // A session token makes its move list authoritative; without one only an empty list starts a verified game.
     const s = await openSession(env, state, "go", moves.length === 0);
+    if (s.mode) mode = s.mode; else s.mode = mode; // the mode is sealed into the session: the client cannot change it mid-game
     const mv = s.verified && Array.isArray(s.pos) ? s.pos.slice() : moves.slice();
     let st = Go.replay(mv);
     const store = storeFor(env);
@@ -123,7 +124,8 @@ export async function handleGoMove(body, env = {}) {
 
     if (humanMove) {
       if (st.toMove !== opp) throw new Error("not the human's turn");
-      st = Go.applyMove(st, `${opp} ${humanMove}`);
+      try { st = Go.applyMove(st, `${opp} ${humanMove}`); }
+      catch (e) { throw new Error(String(e.message || e).replace(/^move \d+ \S+ illegal: /, "")); } // the bare reason (ko, superko, suicide, occupied) reaches the player
       mv.push(`${opp} ${humanMove}`);
       humanBoard = Go.toRows(st.board);
       if (ended()) return finish(null);

@@ -68,7 +68,7 @@ export function buildChessPlayerRequest(c, moves, me, plan) {
 export async function handleChessMove(body, env = {}) {
   try {
     const { moves = [], humanMove = null, jev = "O", state = null } = body || {};
-    const mode = normalizeMode(body && body.mode);
+    let mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
     if (!Array.isArray(moves) || moves.length > C.MAX_PLIES) throw new Error(`moves must be an array of at most ${C.MAX_PLIES} moves`);
     if (!moves.every((m) => typeof m === "string" && m.length <= 10 && SAN_RE.test(m))) throw new Error("bad entry in moves");
@@ -78,6 +78,7 @@ export async function handleChessMove(body, env = {}) {
     // A session token carries the position (FEN + repetition table) and skips the replay; the move list is
     // then context only. Without one, only an empty list starts a verified game.
     const s = await openSession(env, state, "chess", moves.length === 0);
+    if (s.mode) mode = s.mode; else s.mode = mode; // the mode is sealed into the session: the client cannot change it mid-game
     let c;
     if (s.verified && s.pos) {
       if (s.n !== mv.length) throw new Error("bad state");

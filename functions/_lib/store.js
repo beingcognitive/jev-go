@@ -7,9 +7,15 @@ export function memoryStore() {
   const games = new Map(), turns = new Map(), counters = new Map();
   return {
     kind: "memory",
+    // First write wins for identity and outcome (name, user_id, result, ended_at); plies only grow; a mode that
+    // changes mid-game is recorded as "mixed". Same rules as the D1 statement below.
     async upsertGame(g) {
       const prev = games.get(g.id);
-      games.set(g.id, { ...(prev || {}), ...g, name: g.name || (prev && prev.name) || null, user_id: g.user_id || (prev && prev.user_id) || null });
+      games.set(g.id, { ...(prev || {}), ...g,
+        mode: prev && prev.mode && prev.mode !== g.mode ? "mixed" : g.mode,
+        model: g.model || (prev && prev.model) || null,
+        result: (prev && prev.result) || g.result || null, plies: Math.max(prev ? prev.plies || 0 : 0, g.plies || 0), ended_at: (prev && prev.ended_at) || g.ended_at || null,
+        name: (prev && prev.name) || g.name || null, user_id: (prev && prev.user_id) || g.user_id || null });
       if (g.result && !(prev && prev.result) && g.backend === "native") { const k = `${g.game}|${g.result}`; counters.set(k, (counters.get(k) || 0) + 1); }
     },
     async addTurn(t) { const arr = turns.get(t.game_id) || []; arr[t.ply] = t; turns.set(t.game_id, arr); },
@@ -50,14 +56,16 @@ export function d1Store(db) {
   return {
     kind: "d1",
     async upsertGame(g) {
+      const prev = g.result ? await this.getGame(g.id) : null; // one point read, only on the request that ends a game
       await db.prepare(
         `INSERT INTO games (id, game, mode, jev, backend, model, result, plies, name, user_id, created_at, ended_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?11, ?12, ?9, ?10)
-         ON CONFLICT(id) DO UPDATE SET mode = ?3, model = COALESCE(?6, games.model), result = ?7, plies = ?8, ended_at = ?10,
+         ON CONFLICT(id) DO UPDATE SET mode = CASE WHEN games.mode = ?3 THEN ?3 ELSE 'mixed' END, model = COALESCE(?6, games.model),
+           result = COALESCE(games.result, ?7), plies = MAX(games.plies, ?8), ended_at = COALESCE(games.ended_at, ?10),
            name = COALESCE(games.name, ?11), user_id = COALESCE(games.user_id, ?12)`,
       ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.result ?? null, g.plies, g.created_at, g.ended_at ?? null, g.name ?? null, g.user_id ?? null).run();
-      // Counters keep stats() at three row reads instead of a scan; a game ends exactly once, so this runs once per game.
-      if (g.result && g.backend === "native") {
+      // Counters keep stats() at three row reads instead of a scan; guarded so a replayed final request cannot count twice.
+      if (g.result && !(prev && prev.result) && g.backend === "native") {
         await db.prepare("INSERT INTO counters (game, result, n) VALUES (?1, ?2, 1) ON CONFLICT(game, result) DO UPDATE SET n = n + 1").bind(g.game, g.result).run();
       }
     },
@@ -84,7 +92,7 @@ export function d1Store(db) {
     },
     async myGames(userId, limit = 50) {
       const { results } = await db.prepare(
-        "SELECT id, game, mode, jev, result, plies, model, created_at, ended_at FROM games WHERE user_id = ?1 ORDER BY created_at DESC LIMIT ?2",
+        "SELECT id, game, mode, jev, backend, result, plies, model, created_at, ended_at FROM games WHERE user_id = ?1 ORDER BY created_at DESC LIMIT ?2",
       ).bind(userId, limit).all();
       return results.map(ownGame);
     },
@@ -105,7 +113,7 @@ export function d1Store(db) {
   };
 }
 
-const ownGame = (g) => ({ id: g.id, game: g.game, mode: g.mode, jev: g.jev, result: g.result || null, plies: g.plies, model: g.model || null, created_at: g.created_at, ended_at: g.ended_at || null });
+const ownGame = (g) => ({ id: g.id, game: g.game, mode: g.mode, jev: g.jev, backend: g.backend || null, result: g.result || null, plies: g.plies, model: g.model || null, created_at: g.created_at, ended_at: g.ended_at || null });
 const publicGame = (g) => ({ id: g.id, game: g.game, mode: g.mode, plies: g.plies, name: g.name || "anonymous", model: g.model || null, ended_at: g.ended_at });
 
 let memory = null;

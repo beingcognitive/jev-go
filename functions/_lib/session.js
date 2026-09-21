@@ -3,22 +3,27 @@
 // recorded result was produced move by move on the server. Payload: { g: game, id, n: plies, pos }.
 
 import { sign, verify } from "./token.js";
+import { storeFor } from "./store.js";
 
 export const secretOf = (env = {}) => env.STATE_SECRET || env.TYPESAFE_API_KEY || "mock-only-secret";
 export const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 
-// Returns { id, n, pos, verified, created }. `state` absent: a fresh verified game only if `isFresh`,
+// Returns { id, n, pos, mode, verified, created }. `state` absent: a fresh verified game only if `isFresh`,
 // otherwise an unverified game (playable, never recorded). A present but invalid token throws "bad state".
+// A token older than the game's recorded position ("stale state") is refused, so a player cannot rewind a
+// recorded game by resending an earlier token; the mode is sealed too, so it cannot change mid-game.
 export async function openSession(env, state, game, isFresh) {
   if (state !== null && state !== undefined) {
     const p = await verify(state, secretOf(env));
     if (!p || p.g !== game || typeof p.id !== "string" || typeof p.n !== "number") throw new Error("bad state");
-    return { id: p.id, n: p.n, pos: p.pos, verified: true, created: p.t || null };
+    const g = await storeFor(env).getGame(p.id);
+    if (g && (g.result || g.plies > p.n)) throw new Error("stale state");
+    return { id: p.id, n: p.n, pos: p.pos, mode: p.m || null, verified: true, created: p.t || null };
   }
-  return { id: newId(), n: 0, pos: null, verified: !!isFresh, created: Date.now() };
+  return { id: newId(), n: 0, pos: null, mode: null, verified: !!isFresh, created: Date.now() };
 }
 
-export const sealSession = (env, game, s, n, pos) => sign({ g: game, id: s.id, n, pos, t: s.created || Date.now() }, secretOf(env));
+export const sealSession = (env, game, s, n, pos) => sign({ g: game, id: s.id, n, pos, m: s.mode || null, t: s.created || Date.now() }, secretOf(env));
 
 // One request may produce a human ply and a Jev ply; both go to the store as turns. Jev's overlay data
 // (top probabilities keyed by board square, the played move's probability) is resolved here so a replay
@@ -44,6 +49,7 @@ export function turnRows(gameId, startPly, board, humanMove, jevInfo, jevBoard, 
 // Persist a request's outcome. Returns a promise the adapter hands to waitUntil.
 export async function record(store, game, s, { mode, jev, backend, model, status, plies, rows, user }) {
   if (!s.verified) return;
+  if (plies === 0 && status === "playing") return; // a state query before any move is not a game yet
   const over = status !== "playing";
   await store.upsertGame({ id: s.id, game, mode, jev, backend, model: model || null, result: over ? status : null, plies, created_at: s.created || Date.now(), ended_at: over ? Date.now() : null,
     user_id: user ? user.id : null, name: user ? user.name : null });
