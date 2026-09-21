@@ -45,8 +45,13 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .stone.pending{opacity:.55}
 .last{position:absolute;left:50%;top:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;background:#e11d48;z-index:4}
 .heat{position:absolute;inset:14%;border-radius:50%;background:var(--accent);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700;pointer-events:none}
-.heat,.cand,.truth{transition:opacity 1.4s ease}
-.grid.faded .heat,.grid.faded .cand,.grid.faded .truth{opacity:0 !important}
+.heat,.cand,.truth{transition:opacity 1.6s ease,transform 1.6s ease}
+.grid.faded .heat{opacity:0 !important;transform:scale(.55)}
+.grid.faded .cand,.grid.faded .truth{opacity:0 !important}
+.pick{transition:opacity 1.2s ease}
+.last.under{opacity:0;transition:opacity 1.2s ease .6s}
+.grid.faded .pick{opacity:0}
+.grid.faded .last.under{opacity:1}
 .grid.hidethoughts .heat,.grid.hidethoughts .cand{display:none}
 .pick{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;letter-spacing:-.02em;z-index:5;pointer-events:none}
 .pick.X{color:#fff}.pick.O{color:#1f1a14}
@@ -66,7 +71,8 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .target.cap{width:86%;height:86%;background:none;border:4px solid rgba(0,0,0,.28)}
 .grid.chess .heat{inset:auto 6% 6% auto;width:44%;height:36%;border-radius:6px;font-size:10px}
 .grid.chess .cand{inset:8%;border-radius:8px}
-.pickc{position:absolute;left:3px;top:3px;font-size:9px;font-weight:800;background:var(--accent);color:#fff;border-radius:6px;padding:1px 4px;z-index:5;pointer-events:none}
+.pickc{position:absolute;left:3px;top:3px;font-size:9px;font-weight:800;background:var(--accent);color:#fff;border-radius:6px;padding:1px 4px;z-index:5;pointer-events:none;transition:opacity 1.2s ease}
+.grid.faded .pickc{opacity:0}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
 .panel h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .statusrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -321,14 +327,16 @@ async function play(humanMove,localMove){
   S.busy=false; S.pending=null; render();
 }
 
+let thoughtsShownAt=0;
 function scheduleFade(){
-  clearTimeout(fadeTimer); fadeArmed=false; gridEl.classList.remove("faded");
+  clearTimeout(fadeTimer); fadeArmed=false; gridEl.classList.remove("faded"); thoughtsShownAt=performance.now();
   if(thoughtsSel!=="fade") return;
-  fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),4000);
+  fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),5000);
 }
 gridEl.addEventListener("pointermove",()=>{
   if(thoughtsSel!=="fade"||fadeArmed||!S||!S.last||S.busy||gridEl.classList.contains("faded")) return;
-  fadeArmed=true; clearTimeout(fadeTimer); fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),700);
+  if(performance.now()-thoughtsShownAt<1500) return; // give the thoughts a moment before a stray mouse move dismisses them
+  fadeArmed=true; clearTimeout(fadeTimer); fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),900);
 },{passive:true});
 
 function addTurnToScore(t){
@@ -381,9 +389,9 @@ function renderIO(){
   }
 }
 
-function renderChess(locked,heat,pmax,candSet,truthRing,pickP){
+function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
   const toSq=(san)=>(S.last&&S.last.sanMap&&S.last.sanMap[san])?S.last.sanMap[san].to:null;
-  const heatSq={}; for(const [san,p] of Object.entries(heat)){ const t=toSq(san); if(t) heatSq[t]=Math.max(heatSq[t]||0,p); }
+  const heatSq={}, heatRankSq={}; for(const [san,p] of Object.entries(heat)){ const t=toSq(san); if(t){ heatSq[t]=Math.max(heatSq[t]||0,p); heatRankSq[t]=heatRank[san]||0; } }
   const candSq=new Set([...candSet].map(toSq).filter(Boolean));
   const truthSq=new Set([...truthRing].map(toSq).filter(Boolean));
   const pickSq= pickP!==undefined && S.last ? toSq(S.last.move) : null;
@@ -407,7 +415,7 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP){
       }
     }
     if(targets.has(sq)){ const t=document.createElement("span"); t.className="target"+(ch!=="."?" cap":""); cell.appendChild(t); }
-    if(heatSq[sq]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.35+0.55*heatSq[sq]/(pmax||1)).toFixed(2); h.textContent=Math.round(heatSq[sq]*100)+"%"; cell.appendChild(h); }
+    if(heatSq[sq]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.35+0.55*heatSq[sq]/(pmax||1)).toFixed(2); h.style.transitionDelay=(heatRankSq[sq]||0)+"ms"; h.textContent=Math.round(heatSq[sq]*100)+"%"; cell.appendChild(h); }
     else if(candSq.has(sq)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
     if(truthSq.has(sq)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
     if(pickSq===sq){ const pk=document.createElement("span"); pk.className="pickc"; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk); }
@@ -421,30 +429,32 @@ function render(){
   const lastIsJev = S.last && !S.busy && S.moves.length && (cfg.chess ? (toMove()===S.human && S.moves[S.moves.length-1]===S.last.move) : S.moves[S.moves.length-1].startsWith(S.jev+" "));
   const pickP = (lastIsJev && S.last.answers) ? (S.last.answers.best_move.top.find(([k])=>k===S.last.move)||[])[1] : undefined;
   gridEl.classList.toggle("hidethoughts",thoughtsSel==="hide");
-  const heat={}; let pmax=0; const candSet=new Set();
-  if(S.last&&S.last.answers){ for(const [k,p] of S.last.answers.best_move.top){ if(k==="pass") continue; heat[k]=p; pmax=Math.max(pmax,p); } }
+  const heat={}, heatRank={}; let pmax=0; const candSet=new Set();
+  if(S.last&&S.last.answers){ const top=S.last.answers.best_move.top; top.forEach(([k,p],i)=>{ if(k==="pass") return; heat[k]=p; pmax=Math.max(pmax,p); heatRank[k]=(top.length-1-i)*160; }); }
   if(S.last&&S.last.candidates) for(const c of S.last.candidates) candSet.add(c.key);
   const truthRing=new Set();
   if(S.last&&S.last.verdict){
     for(const t of [cfg.t1,cfg.t2]) if(S.last.verdict[t]!=="found"&&((S.last.truth&&S.last.truth[t])||[]).length) S.last.truth[t].forEach(k=>truthRing.add(k));
   }
   const locked=S.busy||S.status!=="playing"||toMove()!==S.human;
-  if(cfg.chess){ renderChess(locked,heat,pmax,candSet,truthRing,pickP); }
+  if(cfg.chess){ renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank); }
   else for(const cell of gridEl.querySelectorAll(".cell")){
     const r=+cell.dataset.r, c=+cell.dataset.c, k=cell.dataset.key;
     cell.classList.toggle("locked",locked);
-    for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth,.cand")) el.remove();
+    for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth,.cand,.pick")) el.remove();
     const ch=S.board[r][c];
     if(ch!=="."){
       const st=document.createElement("span"); st.className="stone "+ch+(k===lastKey&&k!==S._animated?" new":""); cell.appendChild(st);
       if(k===lastKey){
-        if(pickP!==undefined && ch===S.jev){ const pk=document.createElement("span"); pk.className="pick "+ch; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk); }
-        else { const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
+        if(pickP!==undefined && ch===S.jev && thoughtsSel!=="hide"){
+          const l=document.createElement("span"); l.className="last under"; cell.appendChild(l);
+          const pk=document.createElement("span"); pk.className="pick "+ch; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk);
+        } else { const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
       }
     } else if(S.pending===k&&!cfg.chess){
       const st=document.createElement("span"); st.className="stone pending "+S.human; cell.appendChild(st);
     } else {
-      if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; const f=heat[k]/(pmax||1); h.style.opacity=(0.25+0.6*f).toFixed(2); h.style.inset=(30-22*f).toFixed(0)+"%"; if(heat[k]>=0.05) h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
+      if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; const f=heat[k]/(pmax||1); h.style.opacity=(0.25+0.6*f).toFixed(2); h.style.inset=(30-22*f).toFixed(0)+"%"; h.style.transitionDelay=(heatRank[k]||0)+"ms"; if(heat[k]>=0.05) h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
       else if(candSet.has(k)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
       if(truthRing.has(k)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
     }
