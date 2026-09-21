@@ -155,7 +155,7 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .rprow{display:flex;gap:6px;align-items:center} /* one row: play, start, back, the slider takes the rest, forward, end */
 .rprow input[type=range]{flex:1;min-width:60px;height:40px;accent-color:var(--felt)}
 .rprow .iconbtn{flex:none;font-size:16px}
-.replaybar a.link{display:inline-flex;align-items:center;min-height:40px;margin-top:2px}
+.statusrow #rpexit{margin-left:auto}
 .replaycap{font-size:15px;margin-top:8px}
 /* every call to Jev, right under the board */
 .calls{margin-top:22px;border-top:1px solid var(--rule);padding-top:14px}
@@ -265,7 +265,7 @@ dialog.gate .help{margin:8px 0 0}
   <section class="play">
     <h1 id="title">Can you beat Jev at Gomoku?</h1>
     <p class="sub" id="sub"></p>
-    <div class="statusrow"><div class="status" id="status" aria-live="polite"></div><span class="chip" id="recchip" hidden></span></div>
+    <div class="statusrow"><div class="status" id="status" aria-live="polite"></div><span class="chip" id="recchip" hidden></span><button id="rpexit" hidden>Exit replay</button></div>
     <div class="boardwrap"><div class="grid" id="grid" aria-label="board"></div></div>
     <div class="scoreline" id="scoreline"></div>
     <div class="pgn" id="pgn" hidden></div>
@@ -289,7 +289,6 @@ dialog.gate .help{margin:8px 0 0}
         <input type="range" id="rprange" min="0" max="0" value="0" aria-label="Move">
         <button class="iconbtn" id="rpnext" title="Next move" aria-label="Next move">›</button><button class="iconbtn" id="rplast" title="End" aria-label="End">⏭</button>
       </div>
-      <a class="link" id="rpexit" href="./">Leave the replay</a>
     </div>
     <div class="replaycap" id="replaycap"></div>
     <div class="jevcard" id="jevcard"><span class="na">Jev has not moved yet.</span></div>
@@ -809,6 +808,7 @@ function render(light){
   else msg=`Your move. You are ${you}.`+(lastKey==="pass"?" Jev passed.":"");
   const st=$("status"); if(st.textContent!==msg) st.textContent=msg; // a live region: only real changes are announced
   // the record chip: does this game count?
+  $("rpexit").hidden=S.status!=="replay";
   const chip=$("recchip"); const be=S.backend;
   // A live game is always recorded under the signed-in name, so the chip speaks only when something is off.
   if(S.status==="replay"||!be||!S.moves.length||(be==="native"&&S.verified)){ chip.hidden=true; }
@@ -830,7 +830,7 @@ function render(light){
     for(const b of promoEl.querySelectorAll("button")) b.addEventListener("click",()=>{ const m=S.promo.find(x=>x.san===b.dataset.san); S.promo=null; S.sel=null; if(m) play(m.san,m); }); }
   if(S.game==="go"){ sl=`Captures: black ${S.captures.X}, white ${S.captures.O}`; if(S.score){ const s=S.score; sl+=`. Black ${s.black} vs white ${s.white} with komi ${s.komi}: ${s.winner==="X"?"black":"white"} by ${s.margin}.`; } }
   $("scoreline").textContent=sl;
-  for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy||!!R; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
+  for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-checked",b.dataset.v===gameSel); } // picking a game during a replay leaves it
   renderJevCard(pickP);
 
   const t=S.last;
@@ -1009,7 +1009,7 @@ $("rpprev").addEventListener("click",()=>byHand(R?R.k-1:0)); $("rpnext").addEven
 $("rprange").addEventListener("input",()=>byHand(Number($("rprange").value),true));
 $("rprange").addEventListener("change",()=>byHand(Number($("rprange").value)));
 document.addEventListener("keydown",(e)=>{ if(!R||e.target===$("rprange")||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return; if(e.key==="ArrowLeft") byHand(R.k-1); if(e.key==="ArrowRight") byHand(R.k+1); if(e.key===" "){ e.preventDefault(); rpPlay(); } });
-$("rpexit").addEventListener("click",(e)=>{ e.preventDefault(); startNew(); });
+$("rpexit").addEventListener("click",()=>startNew());
 
 $("newgame").addEventListener("click",()=>{ if(startNew("O")) $("menu").close(); });
 $("newgamejev").addEventListener("click",()=>{ if(startNew("X")) $("menu").close(); });
@@ -1018,7 +1018,7 @@ $("place").addEventListener("click",()=>{ if(S&&S.aim){ const k=S.aim; S.aim=nul
 $("pass").addEventListener("click",()=>{ if(S.game==="go"){ S.aim=null; startingMove(); play("pass"); } });
 $("resetscore").addEventListener("click",()=>{ if(!confirm("Reset the tally kept on this device? Recorded games and the hall of fame are not affected.")) return; score={...DEFAULT_SCORE}; saveScore(); render(); });
 for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{
-  if(S.busy||R||b.dataset.v===gameSel) return;
+  if(S.busy||(!R&&b.dataset.v===gameSel)) return;
   const prev=gameSel; gameSel=b.dataset.v;
   if(!startNew("O")){ gameSel=prev; return; } // declined: nothing changes, nothing is remembered
   try{ localStorage.setItem(LSGAME,gameSel); }catch{}
