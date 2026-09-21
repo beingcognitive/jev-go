@@ -74,6 +74,13 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .piece.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000,0 1px 1px rgba(0,0,0,.6)}.piece.b{color:#111;text-shadow:0 0 1px #fff}
 .target{position:absolute;left:50%;top:50%;width:26%;height:26%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(0,0,0,.28);z-index:2;pointer-events:none}
 .target.cap{width:86%;height:86%;background:none;border:4px solid rgba(0,0,0,.28)}
+.ghostpiece{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(var(--cell)*.74);line-height:1;opacity:0;z-index:4;pointer-events:none;transition:opacity .12s;user-select:none}
+.ghostpiece.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000}.ghostpiece.b{color:#111;text-shadow:0 0 1px #fff}
+@media (hover:hover){
+  .grid.chess .cell:hover .ghostpiece{opacity:.55}
+  .grid.chess .cell:hover .ghostpiece~.target,.grid.chess .cell:hover .target{opacity:.35}
+  .grid.chess .cell.canpick:hover{box-shadow:inset 0 0 0 3px rgba(37,99,235,.45)}
+}
 .grid.chess .heat{inset:auto 6% 6% auto;width:44%;height:36%;border-radius:6px;font-size:10px}
 .grid.chess .cand{inset:8%;border-radius:8px}
 .pickc{position:absolute;left:3px;top:3px;font-size:9px;font-weight:800;background:var(--accent);color:#fff;border-radius:6px;padding:1px 4px;z-index:5;pointer-events:none;transition:opacity 1.2s ease}
@@ -431,13 +438,15 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
   const pickSq= pickP!==undefined && S.last ? toSq(S.last.move) : null;
   const lm=S.lastMove; const targets=new Map(); if(S.sel) for(const m of S.legal) if(m.from===S.sel) targets.set(m.to,true);
   let kingSq=null; if(S.inCheck&&S.status==="playing"){ const k= toMove()==="X"?"K":"k"; for(let r=0;r<8;r++){ const c=S.board[r].indexOf(k); if(c>=0){ kingSq=cfg.cols[c]+(8-r); break; } } }
+  const selPiece=S.sel?pieceAt(S.sel):null;
   for(const cell of gridEl.querySelectorAll(".cell")){
     const sq=cell.dataset.key, ch=pieceAt(sq);
     cell.classList.toggle("locked",locked);
     cell.classList.toggle("lastmv",!!(lm&&(lm.from===sq||lm.to===sq)));
     cell.classList.toggle("sel",S.sel===sq);
     cell.classList.toggle("check",kingSq===sq);
-    for(const el of cell.querySelectorAll(".piece,.target,.heat,.cand,.truth,.pickc")) el.remove();
+    cell.classList.toggle("canpick",!locked&&!S.sel&&ownPiece(ch)&&S.legal.some(m=>m.from===sq));
+    for(const el of cell.querySelectorAll(".piece,.target,.heat,.cand,.truth,.pickc,.ghostpiece")) el.remove();
     if(ch!=="."){
       const pc=document.createElement("span"); pc.className="piece "+(ch===ch.toUpperCase()?"w":"b"); pc.textContent=GLYPH[ch]||"?"; cell.appendChild(pc);
       if(S.anim&&S.anim.to===sq){
@@ -448,7 +457,10 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
         S.anim=null;
       }
     }
-    if(targets.has(sq)){ const t=document.createElement("span"); t.className="target"+(ch!=="."?" cap":""); cell.appendChild(t); }
+    if(targets.has(sq)){
+      const t=document.createElement("span"); t.className="target"+(ch!=="."?" cap":""); cell.appendChild(t);
+      if(selPiece&&selPiece!=="."){ const g=document.createElement("span"); g.className="ghostpiece "+(selPiece===selPiece.toUpperCase()?"w":"b"); g.textContent=GLYPH[selPiece]||"?"; cell.appendChild(g); }
+    }
     if(heatSq[sq]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.35+0.55*heatSq[sq]/(pmax||1)).toFixed(2); h.style.transitionDelay=(heatRankSq[sq]||0)+"ms"; h.textContent=Math.round(heatSq[sq]*100)+"%"; cell.appendChild(h); }
     else if(candSq.has(sq)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
     if(truthSq.has(sq)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
