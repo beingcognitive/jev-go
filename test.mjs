@@ -366,3 +366,97 @@ test("go self-play smoke (player-mode O vs greedy X) finishes legally", async ()
   }
   assert.ok(status !== "playing");
 });
+
+// ---------------- Chess ----------------
+import * as C from "./functions/_lib/chess.js";
+import { handleChessMove, chessPlayerPlan, buildChessFullRequest } from "./functions/_lib/chess_move.js";
+import { onRequestPost as chessPost } from "./functions/api/chess.js";
+
+test("chess: replay validates SAN, turn order, game over and length", () => {
+  assert.equal(C.replay(["e4", "e5", "Nf3"]).turn(), "b");
+  assert.throws(() => C.replay(["e5"]), /illegal/);
+  assert.throws(() => C.replay(["e4", "e4"]), /illegal/);
+  assert.throws(() => C.replay(["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#", "Ke7"]), /game is over/);
+  assert.throws(() => C.replay(Array(401).fill("e4")), /too many/);
+  assert.throws(() => C.replay([{ san: "e4" }]), /bad move/);
+});
+
+test("chess: annotations: mate, free capture, hanging piece, king cannot take a defended piece, threats", () => {
+  const mate = C.analyzeAll(C.replay(["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"]));
+  assert.equal(mate[0].key, "Qxf7#"); assert.equal(mate[0].mate, true); assert.match(mate[0].desc, /^checkmate; captures a pawn \(1\) for free$/);
+  assert.deepEqual(C.truthOf(mate).mate, ["Qxf7#"]);
+  const free = C.analyzeAll(C.replay(["e4", "e5", "Nf3", "Nc6", "Nxe5"]));
+  assert.equal(free[0].key, "Nxe5"); assert.match(free[0].desc, /captures a knight \(3\) for free/);
+  assert.ok(C.truthOf(free).material.includes("Nxe5"));
+  const hang = C.analyzeAll(C.replay(["e4", "e5", "Nf3", "Nc6"]));
+  const nxe5 = hang.find((a) => a.key === "Nxe5"); // wins a pawn but the knight is then taken for nothing
+  assert.ok(nxe5.gain < 0); assert.match(nxe5.desc, /hangs the knight \(3\): attacked by a knight, undefended/);
+  // a defended piece attacked only by the king is safe: after 1.e4 e5 2.Qh5 Nc6 3.Bc4 Nf6 4.Qxf7# the mate line says nothing about the king
+  const defended = C.analyzeAll(C.replay(["e4", "e5", "Bc4", "Nc6", "Qh5", "Nf6"]));
+  assert.match(defended.find((a) => a.key === "Qxf7#").desc, /^checkmate; captures a pawn \(1\) for free$/);
+  const threat = C.analyzeAll(C.replay(["e4", "e5", "Qh5"]));
+  const nf6 = threat.find((a) => a.key === "Nf6");
+  assert.match(nf6.desc, /threatens the queen on h5 \(\+9\)/);
+  assert.ok(threat[0].key === "Nf6" || threat[0].key === "g6" || threat[0].key === "Qe7" || threat[0].key === "Qf6", `top was ${threat[0].key}`);
+});
+
+test("chess: status detection", () => {
+  assert.equal(C.status(C.replay(["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"])).result, "checkmate");
+  assert.equal(C.status(C.replay(["e4"])).over, false);
+  assert.equal(C.boardRows(C.replay([]))[0], "rnbqkbnr");
+  assert.equal(C.boardRows(C.replay([]))[7], "RNBQKBNR");
+});
+
+test("chess: full request lists every legal move in SAN order; naked has no in_check hint; player pool bounded", () => {
+  const c = C.replay(["e4", "e5", "Nf3"]);
+  const an = C.analyzeAll(c);
+  const full = buildChessFullRequest(c, ["e4", "e5", "Nf3"], "b", an, "naked", true);
+  assert.equal(full.legal.size, c.moves().length);
+  assert.ok(Object.keys(full.questions.best_move.criteria).length <= 255);
+  assert.equal(Object.values(full.questions.best_move.criteria).every((v) => v === null), true);
+  assert.equal("in_check" in full.state, false);
+  const keys = Object.keys(full.questions.best_move.criteria);
+  assert.deepEqual(keys, [...keys].sort());
+  const plan = chessPlayerPlan(an);
+  assert.equal(plan.forced, undefined); assert.ok(plan.pool.length <= 12);
+  assert.equal(chessPlayerPlan(C.analyzeAll(C.replay(["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"]))).forced.source, "forced-mate");
+});
+
+test("chess handleChessMove: state query, human move, Jev reply, mate, illegal, game over", async () => {
+  const q = await handleChessMove({ moves: [], humanMove: null, jev: "O" }, {});
+  assert.equal(q.status, 200); assert.equal(q.body.jev, null); assert.equal(q.body.legal.length, 20); assert.equal(q.body.turn, "w");
+  const r = await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player" }, {});
+  assert.equal(r.status, 200); assert.equal(r.body.moves.length, 2); assert.equal(r.body.legal.length > 0, true);
+  assert.ok(r.body.jev.sanMap && r.body.jev.candidates.length && r.body.jev.io);
+  const m = await handleChessMove({ moves: ["e4", "e5", "Qh5", "Nc6", "Bc4"], humanMove: "Nf6", jev: "X", mode: "player" }, {});
+  assert.equal(m.body.status, "jev_wins"); assert.equal(m.body.result, "checkmate"); assert.equal(m.body.jev.source, "forced-mate");
+  const hm = await handleChessMove({ moves: ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"], humanMove: "Qxf7#", jev: "O" }, {});
+  assert.equal(hm.body.status, "human_wins");
+  assert.equal((await handleChessMove({ moves: [], humanMove: "e9", jev: "O" }, {})).status, 400);
+  assert.equal((await handleChessMove({ moves: ["e4"], humanMove: "d5", jev: "O" }, {})).status, 400);
+  assert.match((await handleChessMove({ moves: ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"], humanMove: null, jev: "O" }, {})).body.error, /game is over/);
+  assert.equal((await handleChessMove({ moves: Array(500).fill("e4"), humanMove: null, jev: "O" }, {})).status, 400);
+});
+
+test("chess handleChessMove naked: verdicts against code truth", async () => {
+  const r = await handleChessMove({ moves: ["e4", "e5", "Qh5", "Nc6", "Bc4"], humanMove: "Nf6", jev: "X", mode: "naked" }, {});
+  assert.deepEqual(r.body.jev.truth.mate, ["Qxf7#"]);
+  assert.ok(["found", "missed", "false"].includes(r.body.jev.verdict.mate));
+});
+
+test("chess Pages Function adapter", async () => {
+  const res = await chessPost({ request: new Request("http://x/api/chess", { method: "POST", body: JSON.stringify({ moves: [], humanMove: "e4", jev: "O" }) }), env: {} });
+  assert.equal(res.status, 200); assert.equal((await res.json()).game, "chess");
+});
+
+test("chess self-play smoke (player-mode Jev vs greedy human) finishes or reaches the cap legally", async () => {
+  let moves = [], status = "playing", guard = 0;
+  while (status === "playing" && guard++ < 150) {
+    const c = C.replay(moves);
+    const an = C.analyzeAll(c);
+    const r = await handleChessMove({ moves, humanMove: an[0].key, jev: "O", mode: "player" }, {});
+    assert.equal(r.status, 200, r.body.error);
+    moves = r.body.moves; status = r.body.status;
+  }
+  assert.ok(status !== "playing" || moves.length >= 300);
+});

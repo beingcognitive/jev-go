@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jev plays Gomoku and Go</title>
-<meta name="description" content="Is Jev a good Gomoku player? Is Jev a great Go player? Play TypeSafe's System One decision model, with every API call shown.">
+<meta name="description" content="Is Jev a good Gomoku, Go, or chess player? Play TypeSafe's System One decision model, with every API call shown.">
 <style>
 :root{
   --bg:#f6f1e7; --panel:#fffaf0; --ink:#1f1a14; --muted:#6b6257; --border:#e5d9c3;
@@ -54,6 +54,19 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .stone.new{animation:pop .22s ease-out}
 .cand{position:absolute;inset:30%;border-radius:50%;border:1.5px solid var(--accent);opacity:.45;z-index:1}
 .truth{position:absolute;inset:8%;border-radius:50%;border:2px dashed var(--bad);z-index:2}
+.boardwrap.chess{background:linear-gradient(135deg,#7a5a3a,#5e4327)}
+.grid.chess .cell::before,.grid.chess .cell::after{display:none}
+.grid.chess .cell.light{background:#f0d9b5}.grid.chess .cell.dark{background:#b58863}
+.grid.chess .cell.lastmv{box-shadow:inset 0 0 0 100px rgba(37,99,235,.28)}
+.grid.chess .cell.sel{box-shadow:inset 0 0 0 3px var(--accent)}
+.grid.chess .cell.check{background-image:radial-gradient(circle,rgba(220,38,38,.75),rgba(220,38,38,0) 72%)}
+.piece{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(var(--cell)*.74);line-height:1;z-index:3;user-select:none;pointer-events:none}
+.piece.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000,0 1px 1px rgba(0,0,0,.6)}.piece.b{color:#111;text-shadow:0 0 1px #fff}
+.target{position:absolute;left:50%;top:50%;width:26%;height:26%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(0,0,0,.28);z-index:2;pointer-events:none}
+.target.cap{width:86%;height:86%;background:none;border:4px solid rgba(0,0,0,.28)}
+.grid.chess .heat{inset:auto 6% 6% auto;width:44%;height:36%;border-radius:6px;font-size:10px}
+.grid.chess .cand{inset:8%;border-radius:8px}
+.pickc{position:absolute;left:3px;top:3px;font-size:9px;font-weight:800;background:var(--accent);color:#fff;border-radius:6px;padding:1px 4px;z-index:5;pointer-events:none}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
 .panel h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .statusrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -115,7 +128,7 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
       <div class="controls">
         <span class="lab">Game</span>
         <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
-          <button type="button" data-v="gomoku">Gomoku 15×15</button><button type="button" data-v="go">Go 9×9</button>
+          <button type="button" data-v="gomoku">Gomoku 15×15</button><button type="button" data-v="go">Go 9×9</button><button type="button" data-v="chess">Chess</button>
         </div>
         <span class="lab">Mode</span>
         <div>
@@ -170,7 +183,12 @@ const CFG={
   go:{ title:"Is Jev a great Go player?", sub:"9×9 Go, area scoring, komi 7.5, positional superko. Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Dead stones are not removed at the end, so capture them before passing.",
     size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(9vw,54px)", endpoint:"/api/go",
     q1:"capture_now", q2:"must_save", t1:"capture", t2:"save", h1:"Capture detect", h2:"Save detect", l1:"captures found", l2:"saves found", pass:true, ls:"jev-go-v1" },
+  chess:{ title:"Is Jev a good chess player?", sub:"Standard chess; rules from chess.js. Code annotates every legal move (captures, checks, what hangs, what it threatens, what the opponent could take back) and ranks them; Jev picks. Mate in one is played by code. Click a piece, then a square; pawns promote to a queen.",
+    size:8, cols:"abcdefgh", stars:[], cell:"min(10vw,58px)", endpoint:"/api/chess",
+    q1:"mate_now", q2:"win_material", t1:"mate", t2:"material", h1:"Mate detect", h2:"Material detect", l1:"mates found", l2:"free captures found", pass:false, ls:"jev-chess-v1", chess:true },
 };
+const GLYPH={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
+const PVAL={p:1,n:3,b:3,r:5,q:9,k:0};
 const LSMODE="jev-gomoku-mode", LSGAME="jev-game";
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
@@ -194,7 +212,9 @@ try{ const m=localStorage.getItem(LSMODE); if(m&&MODEHELP_KEYS.includes(m)) mode
 function newGame(jev){
   cfg=CFG[gameSel]; score=loadScore();
   const empty=Array.from({length:cfg.size},()=>".".repeat(cfg.size));
-  S={ game:gameSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false };
+  S={ game:gameSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
+      legal:[], sel:null, inCheck:false, result:null, lastMove:null, flip: !!cfg.chess && jev==="X" };
+  if(cfg.chess){ S.board=["rnbqkbnr","pppppppp","........","........","........","........","PPPPPPPP","RNBQKBNR"]; }
   buildGrid();
 }
 function toMove(){ return S.moves.length%2===0?"X":"O"; }
@@ -202,6 +222,27 @@ function keyOf(r,c){ return cfg.cols[c]+(cfg.size-r); }
 
 function buildGrid(){
   gridEl.innerHTML="";
+  gridEl.classList.toggle("chess",!!cfg.chess);
+  document.querySelector(".boardwrap").classList.toggle("chess",!!cfg.chess);
+  if(cfg.chess){
+    gridEl.style.setProperty("--cell",cfg.cell);
+    gridEl.style.gridTemplateColumns=`22px repeat(8, var(--cell))`;
+    gridEl.style.gridTemplateRows=`18px repeat(8, var(--cell))`;
+    gridEl.appendChild(Object.assign(document.createElement("div"),{className:"lbl"}));
+    for(let dc=0;dc<8;dc++){ const d=document.createElement("div"); d.className="lbl"; d.textContent=cfg.cols[S.flip?7-dc:dc]; gridEl.appendChild(d); }
+    for(let dr=0;dr<8;dr++){
+      const r=S.flip?7-dr:dr;
+      const rl=document.createElement("div"); rl.className="lbl"; rl.textContent=8-r; gridEl.appendChild(rl);
+      for(let dc=0;dc<8;dc++){
+        const c=S.flip?7-dc:dc, sq=cfg.cols[c]+(8-r);
+        const cell=document.createElement("div");
+        cell.className="cell "+(((r+c)%2===0)?"light":"dark"); cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=sq; cell.title=sq;
+        cell.addEventListener("click",()=>onSquare(sq));
+        gridEl.appendChild(cell);
+      }
+    }
+    return;
+  }
   gridEl.style.setProperty("--cell",cfg.cell);
   gridEl.style.gridTemplateColumns=`22px repeat(${cfg.size}, var(--cell))`;
   gridEl.style.gridTemplateRows=`18px repeat(${cfg.size}, var(--cell))`;
@@ -227,6 +268,20 @@ function onCell(r,c){
   play(keyOf(r,c));
 }
 
+function ownPiece(ch){ return ch!=="." && ((S.human==="X")===(ch===ch.toUpperCase())); }
+function pieceAt(sq){ const c=cfg.cols.indexOf(sq[0]), r=8-Number(sq[1]); return S.board[r][c]; }
+function onSquare(sq){
+  if(!S||S.busy||S.status!=="playing") return;
+  if(toMove()!==S.human) return;
+  const ch=pieceAt(sq);
+  if(S.sel){
+    const cands=S.legal.filter(m=>m.from===S.sel&&m.to===sq);
+    if(cands.length){ const m=cands.find(x=>x.promotion==="q")||cands[0]; S.sel=null; play(m.san); return; }
+    if(ownPiece(ch)&&sq!==S.sel){ S.sel=sq; render(); return; }
+    S.sel=null; render(); return;
+  }
+  if(ownPiece(ch)&&S.legal.some(m=>m.from===sq)){ S.sel=sq; render(); }
+}
 async function play(humanMove){
   S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
   try{
@@ -237,6 +292,7 @@ async function play(humanMove){
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend; syncRecordBackend(d.backend);
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
+    if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing") finishGame();
   }catch(e){ $("err").textContent=e.message; }
@@ -303,6 +359,30 @@ function renderIO(){
   }
 }
 
+function renderChess(locked,heat,pmax,candSet,truthRing,pickP){
+  const toSq=(san)=>(S.last&&S.last.sanMap&&S.last.sanMap[san])?S.last.sanMap[san].to:null;
+  const heatSq={}; for(const [san,p] of Object.entries(heat)){ const t=toSq(san); if(t) heatSq[t]=Math.max(heatSq[t]||0,p); }
+  const candSq=new Set([...candSet].map(toSq).filter(Boolean));
+  const truthSq=new Set([...truthRing].map(toSq).filter(Boolean));
+  const pickSq= pickP!==undefined && S.last ? toSq(S.last.move) : null;
+  const lm=S.lastMove; const targets=new Map(); if(S.sel) for(const m of S.legal) if(m.from===S.sel) targets.set(m.to,true);
+  let kingSq=null; if(S.inCheck&&S.status==="playing"){ const k= toMove()==="X"?"K":"k"; for(let r=0;r<8;r++){ const c=S.board[r].indexOf(k); if(c>=0){ kingSq=cfg.cols[c]+(8-r); break; } } }
+  for(const cell of gridEl.querySelectorAll(".cell")){
+    const sq=cell.dataset.key, ch=pieceAt(sq);
+    cell.classList.toggle("locked",locked);
+    cell.classList.toggle("lastmv",!!(lm&&(lm.from===sq||lm.to===sq)));
+    cell.classList.toggle("sel",S.sel===sq);
+    cell.classList.toggle("check",kingSq===sq);
+    for(const el of cell.querySelectorAll(".piece,.target,.heat,.cand,.truth,.pickc")) el.remove();
+    if(ch!=="."){ const pc=document.createElement("span"); pc.className="piece "+(ch===ch.toUpperCase()?"w":"b"); pc.textContent=GLYPH[ch]||"?"; cell.appendChild(pc); }
+    if(targets.has(sq)){ const t=document.createElement("span"); t.className="target"+(ch!=="."?" cap":""); cell.appendChild(t); }
+    if(heatSq[sq]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.35+0.55*heatSq[sq]/(pmax||1)).toFixed(2); h.textContent=Math.round(heatSq[sq]*100)+"%"; cell.appendChild(h); }
+    else if(candSq.has(sq)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
+    if(truthSq.has(sq)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
+    if(pickSq===sq){ const pk=document.createElement("span"); pk.className="pickc"; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk); }
+  }
+}
+
 function render(){
   $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2;
   $("pass").hidden=!cfg.pass;
@@ -318,7 +398,8 @@ function render(){
     for(const t of [cfg.t1,cfg.t2]) if(S.last.verdict[t]!=="found"&&((S.last.truth&&S.last.truth[t])||[]).length) S.last.truth[t].forEach(k=>truthRing.add(k));
   }
   const locked=S.busy||S.status!=="playing"||toMove()!==S.human;
-  for(const cell of gridEl.querySelectorAll(".cell")){
+  if(cfg.chess){ renderChess(locked,heat,pmax,candSet,truthRing,pickP); }
+  else for(const cell of gridEl.querySelectorAll(".cell")){
     const r=+cell.dataset.r, c=+cell.dataset.c, k=cell.dataset.key;
     cell.classList.toggle("locked",locked);
     for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth,.cand")) el.remove();
@@ -329,7 +410,7 @@ function render(){
         if(pickP!==undefined && ch===S.jev){ const pk=document.createElement("span"); pk.className="pick "+ch; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk); }
         else { const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
       }
-    } else if(S.pending===k){
+    } else if(S.pending===k&&!cfg.chess){
       const st=document.createElement("span"); st.className="stone pending "+S.human; cell.appendChild(st);
     } else {
       if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; const f=heat[k]/(pmax||1); h.style.opacity=(0.25+0.6*f).toFixed(2); h.style.inset=(30-22*f).toFixed(0)+"%"; if(heat[k]>=0.05) h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
@@ -340,12 +421,14 @@ function render(){
   const you=S.human==="X"?"X (black)":"O (white)";
   let msg;
   if(S.busy) msg="Jev is thinking…";
-  else if(S.status==="human_wins") msg= S.game==="go" ? "Game over. You win." : "You win. Five in a row.";
-  else if(S.status==="jev_wins") msg= S.game==="go" ? "Game over. Jev wins." : "Jev wins.";
-  else if(S.status==="draw") msg="Draw. Board full.";
+  else if(S.status==="human_wins") msg= cfg.chess ? `${S.result==="checkmate"?"Checkmate.":"Game over."} You win.` : S.game==="go" ? "Game over. You win." : "You win. Five in a row.";
+  else if(S.status==="jev_wins") msg= cfg.chess ? `${S.result==="checkmate"?"Checkmate.":"Game over."} Jev wins.` : S.game==="go" ? "Game over. Jev wins." : "Jev wins.";
+  else if(S.status==="draw") msg= cfg.chess ? `Draw: ${S.result||"draw"}.` : "Draw. Board full.";
+  else if(cfg.chess) msg=`Your move. You are ${S.human==="X"?"White":"Black"}.`+(S.inCheck?" Check!":"")+(S.sel?` Selected ${S.sel}.`:"");
   else msg=`Your move. You are ${you}.`+(lastKey==="pass"?" Jev passed.":"");
   $("status").textContent=msg;
   let sl="";
+  if(cfg.chess){ let w=0,b=0; for(const row of S.board) for(const ch of row){ if(ch===".") continue; const v=PVAL[ch.toLowerCase()]||0; if(ch===ch.toUpperCase()) w+=v; else b+=v; } sl=`Material: White ${w} · Black ${b}`+(S.lastMove?` · last ${S.lastMove.san}`:""); }
   if(S.game==="go"){ sl=`Captures: X ${S.captures.X} · O ${S.captures.O}`; if(S.score){ const s=S.score; sl+=` · Black ${s.black} vs White ${s.white} (incl. komi ${s.komi}) → ${s.winner==="X"?"Black":"White"} by ${s.margin}`; } }
   $("scoreline").textContent=sl;
   const be=S.backend; const badge=$("backend");
@@ -403,15 +486,15 @@ function render(){
     stat(score.calls?Math.round(score.latency/score.calls):"–","avg ms per call");
 }
 
-$("newgame").addEventListener("click",()=>{ newGame("O"); render(); });
+$("newgame").addEventListener("click",()=>{ newGame("O"); render(); if(cfg.chess) play(null); });
 $("jevopens").addEventListener("click",()=>{ newGame("X"); render(); play(null); });
 $("pass").addEventListener("click",()=>{ if(S.game==="go") play("pass"); });
 $("resetscore").addEventListener("click",()=>{ score={...DEFAULT_SCORE}; saveScore(); render(); });
 for(const b of $("modeseg").querySelectorAll("button")) b.addEventListener("click",()=>{ modeSel=b.dataset.v; try{ localStorage.setItem(LSMODE,modeSel); }catch{} render(); });
 for(const b of $("thoughtseg").querySelectorAll("button")) b.addEventListener("click",()=>{ thoughtsSel=b.dataset.v; try{ localStorage.setItem(LSTHOUGHTS,thoughtsSel); }catch{} scheduleFade(); render(); });
-for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||b.dataset.v===gameSel) return; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} newGame("O"); render(); });
+for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||b.dataset.v===gameSel) return; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} newGame("O"); render(); if(cfg.chess) play(null); });
 
-newGame("O"); render();
+newGame("O"); render(); if(cfg.chess) play(null);
 </script>
 </body>
 </html>

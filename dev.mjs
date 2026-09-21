@@ -6,6 +6,7 @@ import path from "node:path";
 for (const f of [".dev.vars", ".env"]) { try { process.loadEnvFile(f); break; } catch {} }
 const { handleMove, backend } = await import("./functions/_lib/move.js");
 const { handleGoMove } = await import("./functions/_lib/go_move.js");
+const { handleChessMove } = await import("./functions/_lib/chess_move.js");
 
 const PORT = Number(process.env.PORT || 3000);
 const PUB = path.join(process.cwd(), "public");
@@ -13,8 +14,8 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
-  if (url.pathname === "/api/move" || url.pathname === "/api/go") {
-    const handle = url.pathname === "/api/go" ? handleGoMove : handleMove;
+  if (url.pathname === "/api/move" || url.pathname === "/api/go" || url.pathname === "/api/chess") {
+    const handle = url.pathname === "/api/go" ? handleGoMove : url.pathname === "/api/chess" ? handleChessMove : handleMove;
     if (req.method !== "POST") { res.writeHead(405, { "content-type": "application/json" }); return res.end('{"ok":false,"error":"POST only"}'); }
     let raw = "";
     for await (const chunk of req) raw += chunk;

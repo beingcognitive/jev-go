@@ -1,8 +1,8 @@
-# jev-go — Is Jev a good Gomoku player? Is Jev a great Go player?
+# jev-go — Is Jev a good Gomoku, Go, or chess player?
 
 **Live:** https://jev-go.chardonn.ai
 
-Play 15×15 Gomoku or 9×9 Go against **Jev**, TypeSafe AI's System One decision model.
+Play 15×15 Gomoku, 9×9 Go or chess against **Jev**, TypeSafe AI's System One decision model.
 Code does the perception, Jev does the judgment, and every API call is shown on the page.
 Hosted on **Cloudflare Pages** with two Pages Functions.
 
@@ -50,15 +50,31 @@ Every call, expandable, with the exact request and Jev's raw response:
 
 ![Jev API calls panel](docs/img/gomoku-api-log.png)
 
+## Chess
+
+Standard chess with rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0
+(BSD-2-Clause, `functions/_lib/vendor/`). X is White. The client sends the SAN move list; the server
+replays it every request. For every legal move code computes what it captures, whether the moved
+piece can be taken back (attacked and undefended, or by something cheaper; a king only takes an
+undefended piece), what other piece it leaves en prise, what it threatens, check, mate, castling,
+development, and ranks them. That is one ply of material sense, not search.
+
+- **Player**: code plays mate in one; otherwise Jev picks from the top 12 annotated moves.
+- **Assisted / Naked**: every legal move, in SAN order; questions `mate_now`, `win_material`,
+  `best_move`, verified before being played.
+
 ## Layout
 
 ```
 functions/api/move.js     Pages Function: POST /api/move (Gomoku)
 functions/api/go.js       Pages Function: POST /api/go   (Go 9×9)
+functions/api/chess.js    Pages Function: POST /api/chess
 functions/_lib/move.js    runtime-agnostic core (prompt build, Jev call, verify, decide)
 functions/_lib/gomoku.js  Gomoku threat engine, candidate ranking, descriptions
 functions/_lib/go.js      Go engine: groups, captures, superko, scoring, annotations
 functions/_lib/go_move.js Go handler core
+functions/_lib/chess.js   chess annotations on top of vendored chess.js
+functions/_lib/chess_move.js chess handler core
 functions/_lib/jev.js     shared Jev transport (native / Vercel Gateway / mock)
 public/index.html         the page
 dev.mjs                   plain Node dev server (no wrangler needed)
