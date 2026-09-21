@@ -151,9 +151,11 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .jevcard .lead .p{color:var(--felt)}
 .jevcard .why{margin-top:2px}
 .jevcard .legend{margin-top:6px;font-size:13px;color:var(--ink-2)}
-.replaybar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
-.replaybar input[type=range]{flex:1;min-width:140px;height:40px;accent-color:var(--felt)}
-.replaybar a.link{display:inline-flex;align-items:center;min-height:40px}
+.replaybar{margin-top:12px}
+.rprow{display:flex;gap:6px;align-items:center} /* one row: play, start, back, the slider takes the rest, forward, end */
+.rprow input[type=range]{flex:1;min-width:60px;height:40px;accent-color:var(--felt)}
+.rprow .iconbtn{flex:none;font-size:16px}
+.replaybar a.link{display:inline-flex;align-items:center;min-height:40px;margin-top:2px}
 .replaycap{font-size:15px;margin-top:8px}
 /* every call to Jev, right under the board */
 .calls{margin-top:22px;border-top:1px solid var(--rule);padding-top:14px}
@@ -281,10 +283,12 @@ dialog.gate .help{margin:8px 0 0}
       <div class="row"><button class="primary" id="again">Play again</button> <button id="rsign" hidden>Sign in</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
     </div>
     <div class="replaybar" id="replaybar" hidden>
-      <button class="primary" id="rpplay" title="Play the game through">▶ Play</button>
-      <button id="rpfirst" title="Start">⏮</button><button id="rpprev" title="Previous move">‹</button>
-      <input type="range" id="rprange" min="0" max="0" value="0" aria-label="Move">
-      <button id="rpnext" title="Next move">›</button><button id="rplast" title="End">⏭</button>
+      <div class="rprow">
+        <button class="iconbtn primary" id="rpplay" title="Play" aria-label="Play">▶</button>
+        <button class="iconbtn" id="rpfirst" title="Start" aria-label="Start">⏮</button><button class="iconbtn" id="rpprev" title="Previous move" aria-label="Previous move">‹</button>
+        <input type="range" id="rprange" min="0" max="0" value="0" aria-label="Move">
+        <button class="iconbtn" id="rpnext" title="Next move" aria-label="Next move">›</button><button class="iconbtn" id="rplast" title="End" aria-label="End">⏭</button>
+      </div>
       <a class="link" id="rpexit" href="./">Leave the replay</a>
     </div>
     <div class="replaycap" id="replaycap"></div>
@@ -990,12 +994,12 @@ function showReplay(light){
 function stepReplay(k,light){ if(!R) return; R.k=Math.max(0,Math.min(R.turns.length-1,k)); showReplay(light); }
 // Play runs the game through at about one move a second; any hand step pauses it; at the end it starts over.
 const RP_STEP_MS=1100; let rpTimer=null;
-function rpStop(){ clearInterval(rpTimer); rpTimer=null; $("rpplay").textContent="▶ Play"; }
+function rpStop(){ clearInterval(rpTimer); rpTimer=null; const b=$("rpplay"); b.textContent="▶"; b.title=b.ariaLabel="Play"; }
 function rpPlay(){
   if(!R) return;
   if(rpTimer){ rpStop(); return; }
   if(R.k>=R.turns.length-1) stepReplay(0);
-  $("rpplay").textContent="❚❚ Pause";
+  const b=$("rpplay"); b.textContent="❚❚"; b.title=b.ariaLabel="Pause";
   rpTimer=setInterval(()=>{ if(!R||R.k>=R.turns.length-1){ rpStop(); return; } stepReplay(R.k+1); },RP_STEP_MS);
 }
 const byHand=(k,light)=>{ rpStop(); stepReplay(k,light); };
