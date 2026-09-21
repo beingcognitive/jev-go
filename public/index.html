@@ -407,6 +407,7 @@ let lastPointer=(window.matchMedia&&matchMedia("(hover:hover)").matches)?"mouse"
 let gsiDown=false; // the Google script failed to load
 let siteBackend=null; // "native" (live Jev: play needs a sign-in) or "mock" (practice: open), learned from the leaderboard and from every move
 let gatePending=null; // what the player was trying to do when the sign-in dialog opened
+let siteSchemaOk=true; // false when the leaderboard reports a database that cannot take a record
 let ioOpen=new Set(), ioClosed=new Set(), ioBuiltFor=-1; // API-call entries the reader opened or closed by hand; how many turns the log was last built for
 let signinGame=null; // the game on screen when the Google button was pressed
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,latency:0,tokens:0,tokenCalls:0};
@@ -564,6 +565,7 @@ function applyLocalChess(m){
   S.promo=null;
 }
 async function play(humanMove,localMove){
+  const game=S; // the game this request belongs to; a retry after a sign-in must not land on a later one
   const snapshot= cfg.chess ? {board:S.board,moves:S.moves,lastMove:S.lastMove,legal:S.legal,inCheck:S.inCheck} : null;
   if(cfg.chess&&localMove) applyLocalChess(localMove);
   const t0=performance.now();
@@ -596,7 +598,11 @@ async function play(humanMove,localMove){
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(true); if(me&&S.verified) loadMyGames(); }
-  }catch(e){ $("err").textContent=friendly(e.message); if(e.message==="sign in to play"){ if(me) signedOut(""); openGate(); } if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } } // a rejected session is dropped first, or the gate would have no button to offer
+  }catch(e){
+    $("err").textContent=friendly(e.message);
+    if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; }
+    if(e.message==="sign in to play"){ if(me) signedOut(""); openGate(()=>{ if(S===game) play(humanMove,localMove); }); } // a rejected session is dropped first (or the gate has no button), and the move is replayed after the sign-in
+  }
   S.busy=false; S.pending=null; render();
 }
 
@@ -794,8 +800,8 @@ function render(light){
   $("rpexit").hidden=S.status!=="replay";
   const chip=$("recchip"); const be=S.backend;
   // A live game is always recorded under the signed-in name, so the chip speaks only when something is off.
-  if(S.status==="replay"||!be||!S.moves.length||(be==="native"&&S.verified)){ chip.hidden=true; }
-  else { chip.hidden=false; if(be==="mock"){ chip.textContent="Practice opponent"; chip.className="chip warn"; } else { chip.textContent="Not recorded"; chip.className="chip"; } }
+  if(S.status==="replay"||!be||!S.moves.length||(be==="native"&&S.verified&&siteSchemaOk)){ chip.hidden=true; }
+  else { chip.hidden=false; if(be==="mock"){ chip.textContent="Practice opponent"; chip.className="chip warn"; } else { chip.textContent="Not recorded"; chip.className="chip"; chip.title= siteSchemaOk ? "This game lost its link to the server." : "The server's database is refusing records right now."; } }
   $("backendhelp").textContent= be==="native" ? "Opponent: Jev, live. The server calls TypeSafe's Jev API for every move." : be==="mock" ? "Opponent: a practice stand-in. The server has no Jev key, so a heuristic plays instead and nothing counts for the hall of fame." : "The opponent resolves on the first move.";
   // aim + actions
   const aiming=!!S.aim&&S.status==="playing"&&!S.busy;
@@ -921,7 +927,7 @@ async function loadLeaderboard(fresh){
   try{
     const r=await fetch(`/api/leaderboard?game=${gameSel}${fresh?"&t="+Date.now():""}`); const d=await r.json();
     if(!d.ok) throw new Error(d.error);
-    siteBackend=d.backend||siteBackend;
+    siteBackend=d.backend||siteBackend; if(d.schema!==undefined) siteSchemaOk=d.schema==="ok";
     const st=d.stats;
     $("lbstats").innerHTML=stat(st.games,"recorded games")+stat(st.jev_wins,"Jev wins")+stat(st.human_wins,"human wins")+stat(st.games?Math.round(100*st.human_wins/st.games)+"%":"–","humans win");
     if(!d.wins.length){ $("lb").innerHTML=`<span class="na">Nobody has beaten Jev at this game yet${d.durable?"":" (records on this server are in memory only)"}.</span>`; return; }
