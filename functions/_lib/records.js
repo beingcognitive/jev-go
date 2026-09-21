@@ -3,6 +3,7 @@ import { storeFor } from "./store.js";
 import { verify } from "./token.js";
 import { secretOf } from "./session.js";
 import { userFromSession } from "./auth.js";
+import { backend } from "./jev.js";
 
 const GAMES = new Set(["gomoku", "go", "chess"]);
 const reply = (status, body) => ({ status, body });
@@ -12,7 +13,7 @@ export async function handleLeaderboard(params, query, env = {}) {
   if (!GAMES.has(game)) return reply(400, { ok: false, error: "unknown game" });
   const store = storeFor(env);
   const [wins, stats, schema] = await Promise.all([store.leaderboard(game), store.stats(game), store.probe().catch((e) => String(e.message || e))]);
-  return reply(200, { ok: true, game, wins, stats, durable: store.kind === "d1", schema }); // schema: "ok", or the database's own error
+  return reply(200, { ok: true, game, wins, stats, durable: store.kind === "d1", schema, backend: backend(env).kind }); // schema: "ok", or the database's own error; backend tells the page whether play needs a sign-in
 }
 
 export async function handleGame(params, query, env = {}) {

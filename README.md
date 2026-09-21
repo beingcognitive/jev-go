@@ -106,15 +106,16 @@ writes is missing, in which case no game is being recorded until the migration r
 
 ## Sign in with Google
 
-Optional. The page shows Google's sign-in button in the top bar and again on the result card; the
-browser posts the ID token to `POST /api/login`, the server verifies Google's RS256 signature against
+Playing the live Jev needs a Google sign-in: the first touch of the board (or "New game, Jev opens")
+opens a small dialog with Google's button, and the server refuses a live move without a valid session,
+so every recorded game and every hall-of-fame win carries a name. Practice games (no key) stay open.
+The browser posts the ID token to `POST /api/login`, the server verifies Google's RS256 signature against
 Google's published keys with WebCrypto, checks issuer, audience and expiry, and issues its own 30-day
-HMAC session. Every move then carries the session, so games and wins are attributed automatically, the
-hall of fame shows your Google first name without a claim, and `POST /api/me` lists your games with
-replay links on any device. Signing in after a game (even after a win) still keeps it: the login request
-carries the game's signed state token, which proves you played it, and the server attaches the game to
-the account. The record chip next to the status line says whether the game on screen counts and under
-which name.
+HMAC session. Every move then carries the session; `POST /api/me` lists your games with replay links on
+any device. Signing in again after a session expired mid-game still keeps the game: the login request
+carries the game's signed state token, which proves you played it, and the server attaches the game to the
+account. The record chip next to the status line says whether the game on screen counts and under which
+name. (`POST /api/claim`, the old name form for anonymous wins, still exists but the page no longer uses it.)
 
 Stored: a hash of the Google subject id and the display name. Never the email or anything from the
 mailbox; sign-in requests identity only. The OAuth client id is public and set in the page and in

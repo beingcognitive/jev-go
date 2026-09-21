@@ -144,10 +144,6 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .result .rtitle{font:600 22px/1.2 var(--serif);font-variation-settings:"opsz" 36;margin-bottom:4px}
 .result .rnote{font-size:15px;color:var(--ink-2)}
 .result .row{margin-top:12px}
-.claim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-.claim input{font:inherit;font-size:16px;padding:8px 10px;border-radius:4px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);min-width:160px;flex:1 1 160px}
-.claim .fine{flex-basis:100%;font-size:13px;color:var(--ink-2)}
-.rsignin{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-top:10px;font-size:14px;color:var(--ink-2)}
 .jevcard{margin-top:14px;padding:12px 14px;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;font-size:15px}
 .jevcard .lead{font:600 17px/1.3 var(--serif);font-variation-settings:"opsz" 24}
 .jevcard .lead .p{color:var(--felt)}
@@ -230,6 +226,11 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
 .drawer details.panel>summary{padding:12px 0}
 .drawer .prose{font-size:15px;line-height:1.55}
 .drawer .prose p{margin:0 0 10px}
+dialog.gate{margin:auto;width:min(380px,92vw);padding:20px 22px;border:1px solid var(--rule);border-radius:6px;background:var(--paper);color:var(--ink)}
+dialog.gate::backdrop{background:rgba(30,33,28,.38)}
+dialog.gate h2{font:600 22px/1.2 var(--serif);font-variation-settings:"opsz" 36;margin:0 0 8px}
+dialog.gate p{margin:0 0 14px;font-size:15px}
+dialog.gate .help{margin:8px 0 0}
 </style>
 </head>
 <body>
@@ -263,13 +264,7 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
     <div class="result" id="result" hidden>
       <div class="rtitle" id="rtitle"></div>
       <div class="rnote" id="rnote"></div>
-      <div class="claim" id="claim" hidden>
-        <input id="claimname" maxlength="24" placeholder="Your name" aria-label="Your name">
-        <button class="primary" id="claimbtn">Put my name on the board</button>
-        <span class="fine">Shown publicly in the hall of fame. You can do this once.</span>
-      </div>
-      <div class="rsignin" id="rsignin" hidden><div id="gsi2"></div><span id="rsigninwhy"></span></div>
-      <div class="row"><button class="primary" id="again">Play again</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
+      <div class="row"><button class="primary" id="again">Play again</button> <button id="rsign" hidden>Sign in</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
     </div>
     <div class="replaybar" id="replaybar" hidden>
       <button id="rpfirst" title="Start">⏮</button><button id="rpprev" title="Previous">◀</button>
@@ -313,6 +308,14 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
   </section>
 </main>
 
+<dialog class="gate" id="gate" aria-label="Sign in to play">
+  <h2>Sign in to play</h2>
+  <p>Games against the live Jev are recorded under your Google first name, and a win goes on the hall of fame. Only a hashed id and your first name are stored, never your email.</p>
+  <div id="gsi3"></div>
+  <p class="help" id="gatehelp"></p>
+  <div class="row"><button data-close>Not now</button></div>
+</dialog>
+
 <dialog class="drawer" id="menu" aria-label="Menu">
   <div class="drawerhead"><b>Beat Jev</b><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="drawerbody">
@@ -327,7 +330,7 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
     <details class="panel" id="p-you">
       <summary>Your games</summary>
       <div class="body">
-        <div class="help" id="whohelp">Sign in with Google (top right) to keep your games on any device. If you beat Jev, your Google first name goes on the public board.</div>
+        <div class="help" id="whohelp">Playing the live Jev needs a Google sign-in (top right, or at your first move). Your games and wins are kept under your first name, on any device.</div>
         <div id="mine" hidden>
           <div id="mystats" class="stats"></div>
           <div class="tablewrap" id="mygames"></div>
@@ -350,7 +353,7 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
       <div class="body prose">
         <p><b>Jev</b> is TypeSafe AI's System One decision model. It does not generate text. You give it a state and a typed question with a list of options, and it returns one choice with a probability for every option. That is the whole interface, which is why a call costs a fraction of a cent and answers in a few hundred milliseconds.</p>
         <p><b>Why a board game.</b> We first tried to play Go against large language models the usual way: describe the board in text, ask for a move. It was expensive, slow, and the models hallucinated: stones that were not there, illegal points, confident nonsense. Jev cannot hallucinate a move, because it can only pick from the options it is given, and every option here is legal by construction. Code computes the position (threats, captures, material); Jev judges among the candidates. The calls under the board show exactly what it saw and what it answered.</p>
-        <p><b>What counts.</b> A game against the live Jev is recorded move by move on the server. Beat it and your name goes on the hall of fame. Sign in with Google to keep your games on any device; only a hashed id and your first name are stored, never your email.</p>
+        <p><b>What counts.</b> A game against the live Jev is recorded move by move on the server, under your Google first name, so playing it asks you to sign in first. Beat it and your name goes on the hall of fame. Only a hashed id and your first name are stored, never your email.</p>
         <h3>How Jev plays this game</h3>
         <div class="help" id="about"></div>
         <div class="help" id="backendhelp"></div>
@@ -387,6 +390,7 @@ let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", fadeTimer=null, fadeAr
 const modeSel="player", thoughtsSel="fade"; // the page plays the real opponent and lets Jev's marks fade when you start your move
 let lastPointer=(window.matchMedia&&matchMedia("(hover:hover)").matches)?"mouse":"touch"; // seeded from the device, then kept current by every press
 let gsiDown=false; // the Google script failed to load
+let siteBackend=null; // "native" (live Jev: play needs a sign-in) or "mock" (practice: open), learned from the leaderboard
 let ioOpen=new Set(), ioBuiltFor=-1; // which API-call entries the reader opened, and how many turns the log was last built for
 let signinGame=null; // the game on screen when the Google button was pressed
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
@@ -401,6 +405,7 @@ const HUMAN_ERR={
   "stale state":"This game has moved on from that position. Reload the page to continue.",
   "not a claimable win":"This win already has a name, or it is not a recorded win.",
   "name required":"Type a name first.", "not signed in":"Your sign-in has expired.", "game is over":"This game has already finished.", "no such game":"There is no recorded game with that id.",
+  "sign in to play":"Sign in to play the live Jev.",
   "illegal human move":"That move is not allowed here.", "illegal move":"That move is not allowed here.", "not the human's turn":"It is not your turn.", "occupied":"That point is taken.",
   "ko":"Ko: you cannot retake that point straight away. Play somewhere else first.", "superko":"That would repeat a position already played.", "suicide":"That stone would have no liberties.",
 };
@@ -424,12 +429,13 @@ function newGame(jev){
   S={ game:gameSel, mode:modeSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, aim:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
       legal:[], sel:null, inCheck:false, result:null, lastMove:null, token:null, gameId:null, verified:false, owner:null, flip: !!cfg.chess && jev==="X" };
   if(cfg.chess){ S.board=["rnbqkbnr","pppppppp","........","........","........","........","PPPPPPPP","RNBQKBNR"]; }
-  $("err").textContent=""; $("note").textContent=""; $("claimbtn").disabled=false; $("claimname").value="";
+  $("err").textContent=""; $("note").textContent="";
   buildGrid();
 }
 // The one "start over" entry: never throws away an unnamed win silently. jev = "X" means Jev opens.
 function startNew(jev="O"){
   if(S&&S.busy) return false;
+  if(jev==="X"&&!me&&siteBackend!=="mock"){ openGate(); return false; } // Jev's opening move is a live call in a recorded game
   if(S&&S.status==="human_wins"&&S.verified&&S.backend==="native"&&!S.owner){ if(!confirm("Start a new game without putting your name on the board?")) return false; }
   newGame(jev); render();
   if(cfg.chess||jev==="X") play(null);
@@ -481,6 +487,9 @@ function buildGrid(){
   }
 }
 document.addEventListener("pointerdown",(e)=>{ lastPointer=e.pointerType||"mouse"; },{passive:true});
+// A live game is always attributed: the first touch of the board asks for a sign-in. Practice games (no key) are open.
+function gated(){ if(me||siteBackend==="mock"||!S||S.status!=="playing") return false; openGate(); return true; }
+function openGate(){ const d=$("gate"); $("gatehelp").textContent= gsiDown ? "Google sign-in could not load here, so the live Jev cannot be played right now." : ""; renderGsi(); if(!d.open) d.showModal(); }
 // "Fade" means: Jev's marks leave when you start your move. Aiming, selecting a piece and passing all count.
 function startingMove(){ if(thoughtsSel==="fade"){ clearTimeout(fadeTimer); gridEl.classList.add("faded"); } }
 // Stones: a mouse commits on click (the hover ghost was the preview). A finger aims first and commits on the
@@ -489,6 +498,7 @@ function onCell(r,c){
   if(!S||S.busy||S.status!=="playing") return;
   if(toMove()!==S.human) return;
   if(S.board[r][c]!==".") return;
+  if(gated()) return;
   const k=keyOf(r,c);
   if(lastPointer==="touch"&&S.aim!==k){ S.aim=k; startingMove(); render(); return; }
   S.aim=null; play(k);
@@ -500,6 +510,7 @@ function onSquare(sq){
   if(!S||S.busy||S.status!=="playing") return;
   if(toMove()!==S.human) return;
   const ch=pieceAt(sq);
+  if(gated()) return;
   if(S.promo){ S.promo=null; }
   if(S.sel){
     const cands=S.legal.filter(m=>m.from===S.sel&&m.to===sq);
@@ -564,7 +575,7 @@ async function play(humanMove,localMove){
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(true); if(me&&S.verified) loadMyGames(); }
-  }catch(e){ $("err").textContent=friendly(e.message); if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } }
+  }catch(e){ $("err").textContent=friendly(e.message); if(e.message==="sign in to play") openGate(); if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } }
   S.busy=false; S.pending=null; render();
 }
 
@@ -699,17 +710,12 @@ function renderResult(){
   else if(S.status==="jev_wins") title= cfg.chess ? (S.result==="checkmate"?"Checkmate. Jev wins.":"Jev wins.") : "Jev wins.";
   else title= cfg.chess ? `Draw: ${S.result||"draw"}.` : "Draw. Board full.";
   $("rtitle").textContent=title;
-  let note="", claim=false, signin=false, replay=false;
+  let note="", signin=false, replay=false;
   if(S.backend==="mock"){ note="A practice game against the stand-in opponent. It is saved, but it never counts for the hall of fame."; replay=S.verified; }
   else if(!S.verified) note="This game lost its link to the server, so it is not recorded.";
-  else if(won){
-    replay=true;
-    if(S.owner) note=`On the board as ${S.owner}.`;
-    else { note= gsiDown ? "You beat the real Jev. Put a name on the hall of fame." : "You beat the real Jev. Put a name on the hall of fame, or sign in to use your Google name."; claim=true; signin=!me&&!gsiDown; }
-  } else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : (me||gsiDown ? "Saved." : "Sign in to keep this game under your name."); signin=!me&&!gsiDown; }
-  $("rnote").textContent=note; $("claim").hidden=!claim; $("rsignin").hidden=!signin;
-  $("rsigninwhy").textContent= won ? "Your Google first name goes on the board." : "Your games then follow your account to any device.";
-  if(signin&&!$("gsi2").firstChild) renderGsi(); // the button is drawn only once its box is visible
+  else if(won){ replay=true; if(S.owner) note=`On the board as ${S.owner}.`; else { note="You beat the real Jev. Sign in to put this win under your name."; signin=!me&&!gsiDown; } }
+  else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : (me||gsiDown ? "Saved." : "Sign in to keep this game under your name."); signin=!me&&!gsiDown; }
+  $("rnote").textContent=note; $("rsign").hidden=!signin;
   const a=$("rreplay"); a.hidden=!(replay&&S.gameId); if(S.gameId) a.href=`?replay=${encodeURIComponent(S.gameId)}`;
   $("share").hidden=!(replay&&S.gameId);
 }
@@ -847,7 +853,7 @@ function render(light){
 
 // ---- drawers ----
 function openDrawer(id){ const d=$(id); if(!d.open) d.showModal(); }
-for(const d of document.querySelectorAll("dialog.drawer")){
+for(const d of document.querySelectorAll("dialog.drawer,dialog.gate")){
   d.addEventListener("click",(e)=>{ const r=d.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) d.close(); }); // the backdrop only, never the drawer's own empty space
   for(const b of d.querySelectorAll("[data-close]")) b.addEventListener("click",()=>d.close());
 }
@@ -860,7 +866,7 @@ function renderWho(){
 }
 function renderGsi(){
   if(!window.google||!google.accounts) return;
-  for(const [id,opts] of [["gsi",{size:"medium",text:"signin"}],["gsi2",{size:"large",text:"signin_with",width:"260"}]]){
+  for(const [id,opts] of [["gsi",{size:"medium",text:"signin"}],["gsi3",{size:"large",text:"signin_with",width:"300"}]]){
     const el=$(id); el.innerHTML="";
     if(!me) google.accounts.id.renderButton(el,{ theme:"outline", shape:"pill", logo_alignment:"left", locale:"en_US", click_listener:()=>{ signinGame=S; }, ...opts });
   }
@@ -871,8 +877,8 @@ window.gsiReady=function(){
   renderGsi();
 };
 window.gsiFailed=function(){ // the Google script did not load (blocked or offline): say so instead of showing an empty slot
-  gsiDown=true; $("gsi").innerHTML=""; $("rsignin").hidden=true;
-  $("whohelp").textContent="Google sign-in could not load here. You can still play, and put a name on the board when you win.";
+  gsiDown=true; $("gsi").innerHTML=""; $("rsign").hidden=true;
+  $("whohelp").textContent="Google sign-in could not load here, so the live Jev cannot be played right now. Practice games still work.";
 };
 function signedOut(msg){
   me=null; try{ localStorage.removeItem(LSSESSION); }catch{}
@@ -886,7 +892,7 @@ async function onGoogleCredential(resp){
     const d=await r.json(); if(!d.ok) throw new Error(d.error||"sign-in failed");
     me={session:d.session,user:d.user,expiresAt:d.expiresAt}; try{ localStorage.setItem(LSSESSION,JSON.stringify(me)); }catch{}
     if(game&&S===game&&d.attached){ game.owner=(d.game&&d.game.name)||me.user.name; if(game.status==="human_wins"&&game.backend==="native") loadLeaderboard(true); }
-    $("note").textContent=""; renderWho(); renderGsi(); loadMyGames(); render();
+    $("note").textContent=""; renderWho(); renderGsi(); loadMyGames(); render(); if($("gate").open) $("gate").close();
   }catch(e){ $("err").textContent="Sign-in failed: "+friendly(e.message); }
 }
 $("signout").addEventListener("click",()=>{
@@ -914,6 +920,7 @@ async function loadLeaderboard(fresh){
   try{
     const r=await fetch(`/api/leaderboard?game=${gameSel}${fresh?"&t="+Date.now():""}`); const d=await r.json();
     if(!d.ok) throw new Error(d.error);
+    siteBackend=d.backend||siteBackend;
     const st=d.stats;
     $("lbstats").innerHTML=stat(st.games,"recorded games")+stat(st.jev_wins,"Jev wins")+stat(st.human_wins,"human wins")+stat(st.games?Math.round(100*st.human_wins/st.games)+"%":"–","humans win");
     if(!d.wins.length){ $("lb").innerHTML=`<span class="na">Nobody has beaten Jev at this game yet${d.durable?"":" (records on this server are in memory only)"}.</span>`; return; }
@@ -921,13 +928,7 @@ async function loadLeaderboard(fresh){
       d.wins.map((w,i)=>`<tr><td>${i+1}</td><td>${esc(w.name)}</td><td>${w.plies}</td><td>${esc(w.mode)}</td><td>${esc(w.model||"")}</td><td>${w.ended_at?new Date(w.ended_at).toLocaleDateString():""}</td><td><a href="?replay=${esc(w.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`;
   }catch(e){ $("lb").innerHTML=`<span class="na">Hall of fame unavailable (${esc(friendly(e.message))}).</span>`; }
 }
-$("claimbtn").addEventListener("click",async()=>{
-  const name=$("claimname").value.trim(); if(!name){ $("claimname").focus(); return; }
-  $("claimbtn").disabled=true;
-  try{ const r=await fetch("/api/claim",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state:S.token,name})}); const d=await r.json(); if(!d.ok) throw new Error(d.error); S.owner=d.name; render(); loadLeaderboard(true); }
-  catch(e){ $("err").textContent="Could not record the name: "+friendly(e.message); $("claimbtn").disabled=false; }
-});
-$("claimname").addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); $("claimbtn").click(); } });
+$("rsign").addEventListener("click",openGate);
 
 // ---- replay ----
 let R=null; // {game, turns, k}

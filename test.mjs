@@ -770,6 +770,19 @@ test("login issues a session; the session attributes games; /api/me lists them; 
   assert.equal(realWins, 2); assert.equal(mine2.body.stats.wins, realWins);
 });
 
+test("live games need a signed-in player: a move or a Jev opening without a session is refused with 401; a chess state query is not", async () => {
+  const live = { TYPESAFE_API_KEY: "test-key" }; // native backend; the refusal happens before any call to Jev
+  const empty = Array.from({ length: 15 }, () => ".".repeat(15));
+  const r = await handleMove({ board: empty, moves: [], humanMove: "H8", jev: "O", mode: "player" }, live);
+  assert.equal(r.status, 401); assert.equal(r.body.error, "sign in to play");
+  assert.equal((await handleGoMove({ moves: [], humanMove: null, jev: "X", mode: "player" }, live)).status, 401);
+  assert.equal((await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player" }, live)).status, 401);
+  const q = await handleChessMove({ moves: [], humanMove: null, jev: "O", mode: "player" }, live);
+  assert.equal(q.status, 200); assert.equal(q.body.legal.length, 20); // the opening position's legal moves, no sign-in needed
+  assert.equal((await handleLeaderboard({}, { game: "gomoku" }, live)).body.backend, "native");
+  assert.equal((await handleLeaderboard({}, { game: "gomoku" }, {})).body.backend, "mock");
+});
+
 test("records: the mode is sealed into the session, a game cannot be rewound with an old token, and a state query records nothing", async () => {
   const store = storeFor({});
   const r0 = await handleChessMove({ moves: [], humanMove: null, jev: "O", mode: "naked" }, {}); // the state query already seals the mode

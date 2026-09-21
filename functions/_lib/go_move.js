@@ -109,6 +109,7 @@ export async function handleGoMove(body, env = {}) {
     let st = Go.replay(mv);
     const store = storeFor(env);
     const user = await userFromSession(env, body && body.session);
+    if (be.kind === "native" && !user && (humanMove || jev === "X")) throw Object.assign(new Error("sign in to play"), { status: 401 }); // live games are always attributed
     const startPly = mv.length;
     let humanBoard = null;
     const ended = () => st.passes >= 2 || st.count >= Go.MAX_MOVES;
