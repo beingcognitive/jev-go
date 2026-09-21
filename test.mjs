@@ -460,3 +460,28 @@ test("chess self-play smoke (player-mode Jev vs greedy human) finishes or reache
   }
   assert.ok(status !== "playing" || moves.length >= 300);
 });
+
+// ---------------- review round 2 regressions ----------------
+
+test("gomoku: forcing search follows counter-fours both ways (Codex verifier positions)", () => {
+  // losing move admitted by a one-ply check: X H8 -> O I8 -> X I7 (forced) -> O F3 wins
+  const lose = playerPlan(boardWith({ A15: "X", C15: "X", E15: "X", I12: "X", E8: "X", F8: "X", G8: "X", I11: "O", I10: "O", I9: "O", D8: "O", C3: "O", D3: "O", E3: "O" }), "X", "O");
+  assert.ok(!lose.pool.map((c) => c.key).includes("H8"), `H8 must be excluded, pool was ${lose.pool.map((c) => c.key)}`);
+  // winning move excluded by a one-ply check: X H8 -> O I8 -> X I7 makes an open four
+  const win = playerPlan(boardWith({ I12: "X", F10: "X", G9: "X", E8: "X", F8: "X", G8: "X", I11: "O", I10: "O", K10: "O", I9: "O", J9: "O", D8: "O" }), "X", "O");
+  assert.ok(win.pool.map((c) => c.key).includes("H8"), `H8 must be in the pool, was ${win.pool.map((c) => c.key)}`);
+});
+
+test("gomoku: block truth includes forks, so a correct fork block is graded found", () => {
+  const b = boardWith({ E8: "X", F8: "X", G8: "X", D8: "O", H9: "X", H10: "X", H11: "X", H12: "O" });
+  assert.deepEqual(G.threatSets(b, "O", "X").block, ["H8"]);
+  const b2 = boardWith({ H8: "X", I8: "X", J9: "X", J10: "X", J11: "X", J12: "O" });
+  assert.deepEqual(G.threatSets(b2, "O", "X").block, ["J8"]);
+});
+
+test("gomoku handleMove: a leading-zero coordinate is recorded canonically so the game can continue", async () => {
+  const r = await handleMove({ board: G.toRows(G.emptyBoard()), moves: [], humanMove: "A01", jev: "O", mode: "player" }, {});
+  assert.equal(r.status, 200); assert.equal(r.body.moves[0], "X A1");
+  const next = await handleMove({ board: r.body.board, moves: r.body.moves, humanMove: "K9", jev: "O", mode: "player" }, {});
+  assert.equal(next.status, 200, next.body.error);
+});

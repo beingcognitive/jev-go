@@ -34,7 +34,8 @@ export function buildFullRequest(board, moves, me, opp, mode, nullOk = true) {
       type: "choice",
       instructions:
         `The empty point ${me} must occupy now to stop ${opp} winning: where ${opp} would make five in a row on ${opp}'s next move, ` +
-        `or, only when ${opp} has no such point, where ${opp} would make an open four. Choose none if ${opp} has no such threat.`,
+        `or, only when ${opp} has no such point, where ${opp} would make an unstoppable threat: an open four, two fours at once, ` +
+        `or a four plus an open three. Choose none if ${opp} has no such threat.`,
       criteria: withNone,
     },
     best_move: { type: "choice", instructions: `The strongest move for ${me} in this position to win the game.`, criteria },
@@ -143,7 +144,7 @@ export async function handleMove(body, env = {}) {
       const p = G.fromKey(humanMove);
       if (!p || board[p.r][p.c] !== ".") throw new Error("illegal human move");
       board[p.r][p.c] = opp;
-      mv.push(`${opp} ${humanMove}`);
+      mv.push(`${opp} ${G.key(p.r, p.c)}`);
       if (G.isWinAt(board, p.r, p.c)) return done("human_wins", null);
     }
     if (G.toMove(board) !== me) throw new Error("not Jev's turn");

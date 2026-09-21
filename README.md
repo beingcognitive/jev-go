@@ -111,9 +111,10 @@ in mock mode.
 
 ## Cost
 
-Jev bills input only, $0.042 per million tokens. A move with all ~200 options is roughly
-7,500 input tokens, about $0.0003, so a full game is under a cent. If you want it cheaper or
-want Jev to see fewer distractors, prune the option set to points within two of any stone.
+Jev bills input only, $0.042 per million tokens. Measured: Player mode is about 1,100 input tokens
+per call (a 20-call Gomoku game costs about a tenth of a cent); Naked and Assisted send every empty
+point and run about 13,000 tokens per call on Gomoku, far fewer on Go and chess. Either way a game
+is well under a cent.
 
 ## Review record
 
@@ -145,5 +146,16 @@ on one identical set of ten findings; the three Opus runs each added independent
 | `includePass` third clause (near the move cap) is decorative | | | | | ✓ | | backlog: kept, harmless |
 | Page has no automated coverage | | | | ✓ | ✓ | ✓ | backlog: no DOM test runner in this repo |
 
-Codex's P1 severities were recalibrated to P2 where the failure needed a crafted request. Round 2
-("fix the fix") ran a reduced fan-out on the fix diff only; see the commit message for its result.
+Codex's P1 severities were recalibrated to P2 where the failure needed a crafted request.
+
+**Round 2 ("fix the fix"), Codex ×1 + Opus ×1 on the round-1 diff only:**
+
+| Finding | Codex | Opus | Decision |
+|---|:-:|:-:|---|
+| A human coordinate like `A01` is recorded non-canonically and rejected by the new validator next turn | ✓ | ✓ | applied: record the parsed key |
+| The one-ply "safe forcing move" check admits a losing four and excludes a winning one when the reply counters with a four | ✓ | | applied: bounded forcing search (depth 6) over fives, forced blocks and unstoppable threats; both positions are regression tests |
+| Block truth ignores double-four / four-three forks although the question promises "unstoppable" threats | | ✓ | applied: block truth uses the unstoppable set; question lists the shapes |
+
+Opus also falsified the round-1 engine changes against independent references: ~931k threat samples
+(0 mismatches), 40k Go replays (0 divergences), 281k Go save evaluations (0 mismatches), 48 self-play
+games through the page's client contract (0 rejections), and nine malformed upstream payloads (no throws).

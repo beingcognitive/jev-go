@@ -155,13 +155,15 @@ export const makesOpenFour = (b, r, c, col) => (analyzeMove(b, r, c, col).counts
 export function fivePointsFor(board, color) {
   return emptyPoints(board).filter((p) => makesFive(board, p.r, p.c, color)).map((p) => p.key);
 }
+// Threat classes the opponent cannot be allowed to make: a cross-direction fork is as final as an open four.
+export const UNSTOPPABLE = new Set(["five", "open_four", "double_four", "four_three"]);
 // Ground truth for the two threat questions (naked / assisted modes).
 export function threatSets(board, me, opp) {
   const pts = emptyPoints(board);
   const win = pts.filter((p) => makesFive(board, p.r, p.c, me)).map((p) => p.key);
   const five = pts.filter((p) => makesFive(board, p.r, p.c, opp)).map((p) => p.key);
-  // While `opp` can already complete five, a point that only stops an open four is not a block.
-  const block = five.length ? five : pts.filter((p) => makesOpenFour(board, p.r, p.c, opp)).map((p) => p.key);
+  // While `opp` can already complete five, a point that only stops a lesser threat is not a block.
+  const block = five.length ? five : pts.filter((p) => UNSTOPPABLE.has(analyzeMove(board, p.r, p.c, opp).cls)).map((p) => p.key);
   return { win, block };
 }
 
@@ -190,8 +192,6 @@ function adjacency(board, r, c) {
   }
   return n;
 }
-// Threat classes the opponent cannot be allowed to make: a cross-direction fork is as final as an open four.
-export const UNSTOPPABLE = new Set(["five", "open_four", "double_four", "four_three"]);
 // After `me` plays (r,c): can `opp` create an unstoppable threat at one of `pts`? (pts = opp's threat points now;
 // adding a `me` stone only removes opp options, so nothing outside that set needs re-testing.)
 export function unstoppableAfter(board, r, c, me, opp, pts) {
@@ -205,15 +205,30 @@ export function unstoppableAfter(board, r, c, me, opp, pts) {
   return hit;
 }
 const FORCING = new Set(["five", "open_four", "double_four", "four_three", "four"]);
-// A forcing move is only a real answer to a threat if the opponent's forced reply does not itself win:
-// with one completion point, the reply at that point must not create an unstoppable threat.
+// Bounded forcing search: who wins if both sides only play fives, forced blocks and unstoppable threats?
+// Returns "X" | "O" for a proven winner, null when unresolved within `depth`.
+function forcingWinner(board, turn, depth = 6) {
+  const other = turn === "X" ? "O" : "X";
+  if (fivePointsFor(board, turn).length) return turn;
+  const blocks = fivePointsFor(board, other);
+  if (blocks.length >= 2) return other;
+  if (depth === 0) return null;
+  const probe = (p) => {
+    board[p.r][p.c] = turn;
+    try { return forcingWinner(board, other, depth - 1); } finally { board[p.r][p.c] = "."; }
+  };
+  if (blocks.length === 1) return probe(fromKey(blocks[0]));
+  for (const p of nearPoints(board)) {
+    if (!UNSTOPPABLE.has(analyzeMove(board, p.r, p.c, turn).cls)) continue;
+    if (probe(p) === turn) return turn;
+  }
+  return null;
+}
+// A forcing move is only a real answer to a threat if the opponent cannot win the forced sequence it starts
+// (the reply may block and counter with a four of its own, so a one-ply look is not enough).
 function forcingIsSafe(board, r, c, me, opp) {
   board[r][c] = me;
-  const replies = fivePointsFor(board, me);
-  let safe = replies.length >= 2;
-  if (replies.length === 1) { const q = fromKey(replies[0]); safe = !UNSTOPPABLE.has(analyzeMove(board, q.r, q.c, opp).cls); }
-  board[r][c] = ".";
-  return safe;
+  try { return isWinAt(board, r, c) || forcingWinner(board, opp) !== opp; } finally { board[r][c] = "."; }
 }
 
 function dirNames(a, classes) {
