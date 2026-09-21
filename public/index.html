@@ -49,7 +49,17 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .truth{position:absolute;inset:8%;border-radius:50%;border:2px dashed var(--bad);z-index:2}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
 .panel h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.statusrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .status{font-size:17px;font-weight:600;min-height:24px}
+.controls{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 14px;align-items:start;margin-top:12px}
+.controls .lab{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding-top:9px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg);flex-wrap:wrap}
+.seg button{border:0;border-radius:0;background:transparent;padding:6px 12px;font-size:14px}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button.on{background:var(--accent);color:#fff}
+.seg button:disabled{opacity:.5}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+@media (max-width:480px){.controls{grid-template-columns:1fr}.controls .lab{padding-top:0}}
 .scoreline{font-size:14px;color:var(--muted);margin-top:4px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
 button,select{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);cursor:pointer}
@@ -75,7 +85,7 @@ th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--pan
 .stat .n{font-size:20px;font-weight:700}.stat .l{font-size:12px;color:var(--muted)}
 .err{color:var(--bad);font-size:13px;margin-top:6px;white-space:pre-wrap}
 .tablewrap{overflow:auto;max-height:280px}
-.modehelp{font-size:13px;color:var(--muted);margin-top:6px}
+.modehelp{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.35}
 details.io{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)}
 details.io summary{cursor:pointer;padding:6px 10px;font-size:13px;font-weight:600}
 details.io .body{padding:0 10px 10px}
@@ -93,30 +103,27 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
   <div><div class="boardwrap"><div class="grid" id="grid" aria-label="board"></div></div></div>
   <div>
     <div class="panel">
-      <div class="status" id="status"></div>
+      <div class="statusrow"><div class="status" id="status"></div><span class="badge" id="backend">backend: …</span></div>
       <div class="scoreline" id="scoreline"></div>
-      <div class="row">
-        <label class="toggle">Game
-          <select id="game">
-            <option value="gomoku">Gomoku 15×15</option>
-            <option value="go">Go 9×9</option>
-          </select>
-        </label>
-        <button class="primary" id="newgame">New game · you start</button>
-        <button id="jevopens">New game · Jev starts</button>
-        <button id="pass" hidden>Pass</button>
-        <span class="badge" id="backend">backend: …</span>
+      <div class="controls">
+        <span class="lab">Game</span>
+        <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
+          <button type="button" data-v="gomoku">Gomoku 15×15</button><button type="button" data-v="go">Go 9×9</button>
+        </div>
+        <span class="lab">Mode</span>
+        <div>
+          <div class="seg" id="modeseg" role="radiogroup" aria-label="Mode">
+            <button type="button" data-v="player">Player</button><button type="button" data-v="assisted">Assisted</button><button type="button" data-v="naked">Naked</button>
+          </div>
+          <div class="modehelp" id="modehelp"></div>
+        </div>
+        <span class="lab">Play</span>
+        <div class="actions">
+          <button class="primary" id="newgame">New game</button>
+          <button id="jevopens">New game · Jev opens</button>
+          <button id="pass" hidden>Pass</button>
+        </div>
       </div>
-      <div class="row">
-        <label class="toggle">Mode
-          <select id="mode">
-            <option value="player">Player: code perception + Jev judgment</option>
-            <option value="assisted">Assisted: all points, annotated, Jev decides all</option>
-            <option value="naked">Naked: all points, no hints, Jev decides all</option>
-          </select>
-        </label>
-      </div>
-      <div class="modehelp" id="modehelp"></div>
       <div class="err" id="err"></div>
     </div>
     <div class="panel">
@@ -156,21 +163,23 @@ const CFG={
 const LSMODE="jev-gomoku-mode", LSGAME="jev-game";
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
-let S=null, cfg=CFG.gomoku, score=null;
+let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player";
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
 function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(cfg.ls)||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
 function saveScore(){ try{ localStorage.setItem(cfg.ls,JSON.stringify(score)); }catch{} }
-try{ const m=localStorage.getItem(LSMODE); if(m) $("mode").value=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) $("game").value=g; }catch{}
+const MODEHELP_KEYS=["player","assisted","naked"];
 const MODEHELP={
   player:"Code plays forced moves and offers a ranked, annotated pool. Jev picks the move. This is the real player.",
   assisted:"Every legal point is an option with exact facts computed by code. Jev answers all three questions; claims are verified before being played.",
   naked:"Every legal point is an option with no description. Measures Jev alone."
 };
+try{ const m=localStorage.getItem(LSMODE); if(m&&MODEHELP_KEYS.includes(m)) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; }catch{}
+
 
 function newGame(jev){
-  cfg=CFG[$("game").value]; score=loadScore();
+  cfg=CFG[gameSel]; score=loadScore();
   const empty=Array.from({length:cfg.size},()=>".".repeat(cfg.size));
-  S={ game:$("game").value, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false };
+  S={ game:gameSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false };
   buildGrid();
 }
 function toMove(){ return S.moves.length%2===0?"X":"O"; }
@@ -206,7 +215,7 @@ function onCell(r,c){
 async function play(humanMove){
   S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
   try{
-    const body={moves:S.moves,humanMove,jev:S.jev,mode:$("mode").value};
+    const body={moves:S.moves,humanMove,jev:S.jev,mode:modeSel};
     if(S.game==="gomoku") body.board=S.board;
     const r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
@@ -309,8 +318,10 @@ function render(){
   const be=S.backend; const badge=$("backend");
   badge.textContent="backend: "+(be||"…"); badge.className="badge "+(be==="mock"?"mock":be?"live":"");
   if(be==="mock") badge.title="No API key set: heuristic opponent, not Jev.";
-  $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy; $("pass").disabled=locked; $("game").disabled=S.busy;
-  $("modehelp").textContent=MODEHELP[$("mode").value]||"";
+  $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy; $("pass").disabled=locked;
+  for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
+  for(const b of $("modeseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===modeSel); b.setAttribute("aria-checked",b.dataset.v===modeSel); }
+  $("modehelp").textContent=MODEHELP[modeSel]||"";
 
   const t=S.last;
   if(t){
@@ -360,8 +371,8 @@ $("newgame").addEventListener("click",()=>{ newGame("O"); render(); });
 $("jevopens").addEventListener("click",()=>{ newGame("X"); render(); play(null); });
 $("pass").addEventListener("click",()=>{ if(S.game==="go") play("pass"); });
 $("resetscore").addEventListener("click",()=>{ score={...DEFAULT_SCORE}; saveScore(); render(); });
-$("mode").addEventListener("change",()=>{ try{ localStorage.setItem(LSMODE,$("mode").value); }catch{} render(); });
-$("game").addEventListener("change",()=>{ try{ localStorage.setItem(LSGAME,$("game").value); }catch{} newGame("O"); render(); });
+for(const b of $("modeseg").querySelectorAll("button")) b.addEventListener("click",()=>{ modeSel=b.dataset.v; try{ localStorage.setItem(LSMODE,modeSel); }catch{} render(); });
+for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||b.dataset.v===gameSel) return; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} newGame("O"); render(); });
 
 newGame("O"); render();
 </script>
