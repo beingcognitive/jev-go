@@ -1,10 +1,14 @@
 // Runtime-agnostic core for chess: handleChessMove(body, env) -> { status, body }.
-// The SAN move list is the source of truth and is replayed every request. X = White, O = Black.
+// State travels with the client as a signed snapshot (`state`), verified and loaded in O(1). Without one,
+// the SAN move list is replayed from the start. X = White, O = Black.
 
 import * as C from "./chess.js";
+import { sign, verify } from "./token.js";
 import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode } from "./jev.js";
 
 const reply = (status, body) => ({ status, body });
+const SAN_RE = /^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$/;
+const stateSecret = (env) => env.STATE_SECRET || env.TYPESAFE_API_KEY || env.AI_GATEWAY_API_KEY || "mock-only-secret";
 const RULES = "Standard chess. X is White and moves first, O is Black. Moves are in standard algebraic notation (SAN).";
 const sideName = (c) => (c === "w" ? "White" : "Black");
 
@@ -62,19 +66,25 @@ export function buildChessPlayerRequest(c, moves, me, plan) {
 
 export async function handleChessMove(body, env = {}) {
   try {
-    const { moves = [], humanMove = null, jev = "O" } = body || {};
+    const { moves = [], humanMove = null, jev = "O", state = null } = body || {};
     const mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
+    if (!Array.isArray(moves) || moves.length > C.MAX_PLIES) throw new Error(`moves must be an array of at most ${C.MAX_PLIES} moves`);
+    if (!moves.every((m) => typeof m === "string" && m.length <= 10 && SAN_RE.test(m))) throw new Error("bad entry in moves");
     const me = C.colorOf(jev), opp = C.otherColor(me);
     const be = backend(env);
+    const secret = stateSecret(env);
     const mv = moves.slice();
-    const c = C.replay(mv);
-    const done = (status, jevInfo, extra = {}) => {
+    // A signed snapshot skips the replay; the move list is then context only (shown to Jev, not trusted).
+    const c = state !== null ? C.fromSnapshot(await verify(state, secret)) : C.replay(mv);
+    if (state !== null && C.plies(c) !== mv.length) throw new Error("bad state");
+    const done = async (status, jevInfo, extra = {}) => {
       const st = C.status(c);
       return reply(200, {
         ok: true, game: "chess", moves: mv, board: C.boardRows(c), fen: c.fen(), turn: c.turn(), inCheck: c.inCheck(),
         legal: status === "playing" && c.turn() === opp ? C.slimLegal(c) : [],
         lastMove: (() => { const h = c.history({ verbose: true }); const l = h[h.length - 1]; return l ? { san: l.san, from: l.from, to: l.to } : null; })(),
+        state: await sign(C.snapshot(c), secret),
         status, result: st.result, backend: be.kind, mode, jev: jevInfo, ...extra,
       });
     };
@@ -84,9 +94,7 @@ export async function handleChessMove(body, env = {}) {
     if (humanMove !== null) {
       if (c.turn() !== opp) throw new Error("not the human's turn");
       if (typeof humanMove !== "string" || humanMove.length > 10) throw new Error("illegal move");
-      let m;
-      try { m = c.move(humanMove); } catch { throw new Error("illegal move"); }
-      if (m.san === "--") { c.undo(); throw new Error("illegal move"); }
+      const m = C.applyMove(c, humanMove);
       mv.push(m.san);
       if (C.status(c).over) return finish(null);
     } else if (c.turn() === opp) {
@@ -134,7 +142,7 @@ export async function handleChessMove(body, env = {}) {
       };
     }
 
-    c.move(info.move);
+    C.applyMove(c, info.move);
     mv.push(info.move);
     if (C.status(c).over) return finish(info);
     return done("playing", info);

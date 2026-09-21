@@ -213,7 +213,7 @@ function newGame(jev){
   cfg=CFG[gameSel]; score=loadScore();
   const empty=Array.from({length:cfg.size},()=>".".repeat(cfg.size));
   S={ game:gameSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
-      legal:[], sel:null, inCheck:false, result:null, lastMove:null, flip: !!cfg.chess && jev==="X" };
+      legal:[], sel:null, inCheck:false, result:null, lastMove:null, token:null, flip: !!cfg.chess && jev==="X" };
   if(cfg.chess){ S.board=["rnbqkbnr","pppppppp","........","........","........","........","PPPPPPPP","RNBQKBNR"]; }
   buildGrid();
 }
@@ -287,12 +287,14 @@ async function play(humanMove){
   try{
     const body={moves:S.moves,humanMove,jev:S.jev,mode:modeSel};
     if(S.game==="gomoku") body.board=S.board;
-    const r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+    if(cfg.chess&&S.token) body.state=S.token;
+    let r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
+    if(!d.ok&&d.error==="bad state"&&body.state){ delete body.state; S.token=null; r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}); try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); } }
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend; syncRecordBackend(d.backend);
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
-    if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
+    if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; S.token=d.state||null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing") finishGame();
   }catch(e){ $("err").textContent=e.message; }

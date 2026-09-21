@@ -10,21 +10,50 @@ export const colorOf = (xo) => (xo === "X" ? "w" : "b");   // X = White, O = Bla
 export const otherColor = (c) => (c === "w" ? "b" : "w");
 const FILES = "abcdefgh";
 
+// A game is a chess.js instance plus `reps`: counts of positions reached since the last capture or pawn
+// move (the only ones that can repeat). Carrying `reps` lets a position loaded from a snapshot still
+// detect threefold repetition, which chess.js can only do from a full move history.
+export const positionKey = (c) => c.fen().split(" ").slice(0, 4).join(" ");
+export function newGame() {
+  const c = new Chess();
+  c.reps = { [positionKey(c)]: 1 };
+  return c;
+}
+// Apply one move (SAN string or {from,to,promotion}); throws on illegal or null moves; updates `reps`.
+export function applyMove(c, input) {
+  if (status(c).over) throw new Error("game is over");
+  let m;
+  try { m = c.move(input); } catch { throw new Error("illegal move"); }
+  if (m.san === "--") { c.undo(); throw new Error("illegal move"); } // chess.js accepts "--"; standard chess does not
+  if (c.reps) {
+    if (m.captured || m.piece === "p") c.reps = {};
+    const k = positionKey(c);
+    c.reps[k] = (c.reps[k] || 0) + 1;
+  }
+  return m;
+}
 export function replay(moves) {
   if (!Array.isArray(moves)) throw new Error("moves must be an array");
   if (moves.length > MAX_PLIES) throw new Error(`too many moves (max ${MAX_PLIES})`);
-  const c = new Chess();
+  const c = newGame();
   for (let i = 0; i < moves.length; i++) {
     const san = moves[i];
     if (typeof san !== "string" || san.length > 10) throw new Error(`bad move ${i}`);
-    if (status(c).over) throw new Error("game is over");
-    let m;
-    try { m = c.move(san); } catch { throw new Error(`move ${i} ${san} illegal`); }
-    if (m.san === "--") throw new Error(`move ${i} illegal: null move`); // chess.js accepts "--"; standard chess does not
+    try { applyMove(c, san); } catch (e) { throw new Error(e.message === "game is over" ? "game is over" : `move ${i} ${san} illegal`); }
   }
   return c;
 }
 export const plies = (c) => 2 * (c.moveNumber() - 1) + (c.turn() === "b" ? 1 : 0);
+
+// Snapshot <-> game. The snapshot is what the client carries between requests (signed by the handler).
+export const snapshot = (c) => ({ v: 1, fen: c.fen(), reps: c.reps || {} });
+export function fromSnapshot(s) {
+  if (!s || s.v !== 1 || typeof s.fen !== "string" || typeof s.reps !== "object") throw new Error("bad state");
+  let c;
+  try { c = new Chess(s.fen); } catch { throw new Error("bad state"); }
+  c.reps = s.reps;
+  return c;
+}
 
 // 8 strings, rank 8 first; uppercase = white, lowercase = black, "." = empty.
 export function boardRows(c) {
@@ -44,27 +73,26 @@ export function material(c) {
 export function status(c) {
   if (c.isCheckmate()) return { over: true, result: "checkmate", winner: otherColor(c.turn()) };
   if (c.isStalemate()) return { over: true, result: "stalemate", winner: null };
-  if (c.isThreefoldRepetition()) return { over: true, result: "draw by repetition", winner: null };
+  if (c.reps ? Object.values(c.reps).some((n) => n >= 3) : c.isThreefoldRepetition()) return { over: true, result: "draw by repetition", winner: null };
   if (c.isInsufficientMaterial()) return { over: true, result: "draw by insufficient material", winner: null };
   if (c.isDraw()) return { over: true, result: "draw by the fifty-move rule", winner: null };
   if (plies(c) >= MAX_PLIES) return { over: true, result: `draw by the ${MAX_PLIES}-ply limit`, winner: null };
   return { over: false, result: null, winner: null };
 }
 
-// Attackers of `square` by `byColor`: cheapest non-king attacker value, and whether the king attacks it.
-function attackInfo(c, square, byColor) {
-  let cheapest = null, attacker = null, king = false;
-  for (const sq of c.attackers(square, byColor)) {
+// Every `color` piece bearing on `square`: values cheapest first with the king (0) last, plus the cheapest
+// non-king attacker's type. One board scan per side.
+function bearing(c, square, color) {
+  const values = [];
+  let attacker = null, cheapest = null;
+  for (const sq of c.attackers(square, color)) {
     const p = c.get(sq);
     if (!p) continue;
-    if (p.type === "k") king = true;
-    else if (cheapest === null || VALUE[p.type] < cheapest) { cheapest = VALUE[p.type]; attacker = p.type; }
+    values.push(VALUE[p.type]);
+    if (p.type !== "k" && (cheapest === null || VALUE[p.type] < cheapest)) { cheapest = VALUE[p.type]; attacker = p.type; }
   }
-  return { cheapest, attacker, king };
-}
-// Values of every `color` piece bearing on `square`, cheapest first, king (0) last.
-function swapList(c, square, color) {
-  return c.attackers(square, color).map((sq) => VALUE[c.get(sq).type]).sort((x, y) => (x === 0 ? 1 : y === 0 ? -1 : x - y));
+  values.sort((x, y) => (x === 0 ? 1 : y === 0 ? -1 : x - y));
+  return { values, attacker, king: values.length > 0 && values[values.length - 1] === 0 };
 }
 // Material a `me` piece worth `val` on `square` is likely to lose: a static exchange over every attacker
 // and defender, cheapest piece first. A king may only take once nothing defends the square any more.
@@ -78,12 +106,12 @@ function see(target, att, def) {
   return Math.max(0, target - see(att[0], def, att.slice(1)));
 }
 function riskOn(c, square, val, me) {
-  const a = attackInfo(c, square, otherColor(me));
-  if (a.cheapest === null && !a.king) return { risk: 0, attacker: null, defended: false };
-  const def = swapList(c, square, me);
-  if (!def.length) return { risk: val, attacker: a.attacker ?? "k", defended: false };
-  const risk = see(val, swapList(c, square, otherColor(me)), def);
-  return { risk, attacker: risk > 0 ? a.attacker ?? "k" : null, defended: true };
+  const att = bearing(c, square, otherColor(me));
+  if (!att.values.length) return { risk: 0, attacker: null, defended: false };
+  const def = bearing(c, square, me);
+  if (!def.values.length) return { risk: val, attacker: att.attacker ?? "k", defended: false };
+  const risk = see(val, att.values, def.values);
+  return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: true };
 }
 // After a move by `me`: the worst hanging `me` piece other than the one on `skip` (one-ply opponent reply).
 function worstHanging(c, me, skip) {

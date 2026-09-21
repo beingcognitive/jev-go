@@ -489,7 +489,7 @@ test("gomoku handleMove: a leading-zero coordinate is recorded canonically so th
 // ---------------- review round 3 regressions (chess + round 2) ----------------
 
 test("chess: null moves and non-string input are rejected", async () => {
-  assert.throws(() => C.replay(["--"]), /null move/);
+  assert.throws(() => C.replay(["--"]), /illegal/);
   assert.equal((await handleChessMove({ moves: [], humanMove: 42, jev: "O" }, {})).status, 400);
   assert.equal((await handleChessMove({ moves: [], humanMove: "--", jev: "O" }, {})).status, 400);
   assert.equal((await handleChessMove({ moves: [], humanMove: ["e4"], jev: "O" }, {})).status, 400);
@@ -534,4 +534,67 @@ test("chess: static exchange counts every attacker and defender (Opus verifier p
   const eq = C.analyzeAll(C.replay(["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6", "Nc3"]));
   const nxe4 = eq.find((a) => a.key === "Nxe4");
   assert.ok(nxe4.gain <= 1 && nxe4.gain >= -2, `Nxe4 gain ${nxe4.gain}`);
+});
+
+// ---------------- chess: signed state tokens ----------------
+import { sign, verify } from "./functions/_lib/token.js";
+
+test("token: sign/verify round trip, tamper detection", async () => {
+  const t = await sign({ a: 1, b: "x" }, "s3cret");
+  assert.deepEqual(await verify(t, "s3cret"), { a: 1, b: "x" });
+  await assert.rejects(verify(t, "other"), /bad state/);
+  await assert.rejects(verify(t.slice(0, -2) + "zz", "s3cret"), /bad state/);
+  const [payload, sig] = t.split(".");
+  const forged = Buffer.from(JSON.stringify({ a: 2 })).toString("base64url") + "." + sig;
+  await assert.rejects(verify(forged, "s3cret"), /bad state/);
+  await assert.rejects(verify(42, "s3cret"), /bad state/);
+});
+
+test("chess: repetition is tracked across snapshots", () => {
+  const c = C.newGame();
+  for (const m of ["Nf3", "Nf6", "Ng1", "Ng8"]) C.applyMove(c, m);
+  const c2 = C.fromSnapshot(C.snapshot(c)); // position seen twice so far, carried in reps
+  for (const m of ["Nf3", "Nf6", "Ng1"]) C.applyMove(c2, m);
+  assert.equal(C.status(c2).over, false);
+  C.applyMove(c2, "Ng8");
+  assert.equal(C.status(c2).result, "draw by repetition");
+  const fresh = C.fromSnapshot(C.snapshot(C.newGame()));
+  C.applyMove(fresh, "e4"); // a pawn move resets the table
+  assert.deepEqual(Object.values(fresh.reps), [1]);
+});
+
+test("chess handleChessMove: the state token replaces the replay and rejects tampering", async () => {
+  const r1 = await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player" }, {});
+  assert.ok(typeof r1.body.state === "string" && r1.body.state.includes("."));
+  const hm = r1.body.legal[0].san;
+  const withToken = await handleChessMove({ moves: r1.body.moves, humanMove: hm, jev: "O", mode: "player", state: r1.body.state }, {});
+  assert.equal(withToken.status, 200, withToken.body.error);
+  assert.equal(withToken.body.moves.length, 4);
+  const replayed = C.replay(withToken.body.moves);
+  assert.equal(replayed.fen(), withToken.body.fen);
+  const tampered = await handleChessMove({ moves: r1.body.moves, humanMove: hm, jev: "O", state: r1.body.state.slice(0, -3) + "abc" }, {});
+  assert.equal(tampered.status, 400); assert.match(tampered.body.error, /bad state/);
+  const mismatch = await handleChessMove({ moves: [], humanMove: hm, jev: "O", state: r1.body.state }, {});
+  assert.equal(mismatch.status, 400); assert.match(mismatch.body.error, /bad state/);
+  const junk = await handleChessMove({ moves: ["<img src=x>"], humanMove: null, jev: "O" }, {});
+  assert.equal(junk.status, 400); assert.match(junk.body.error, /bad entry/);
+});
+
+test("chess: a long game costs about the same with a token as an opening does", async () => {
+  let seed = 5; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const { Chess } = await import("./functions/_lib/vendor/chess.js");
+  let best = [];
+  for (let attempt = 0; attempt < 30 && best.length < 250; attempt++) {
+    const c = new Chess(); const san = [];
+    while (!c.isGameOver() && san.length < 300) { const ms = c.moves({ verbose: true }); const m = ms[Math.floor(rnd() * ms.length)]; c.move(m.san); san.push(m.san); }
+    if (san.length > best.length) best = san;
+  }
+  const c = C.replay(best);
+  const jev = c.turn() === "w" ? "X" : "O";
+  const token = await sign(C.snapshot(c), "mock-only-secret");
+  const t0 = performance.now();
+  const r = await handleChessMove({ moves: best, humanMove: null, jev, mode: "player", state: token }, {});
+  const ms = performance.now() - t0;
+  assert.equal(r.status, 200, r.body.error);
+  assert.ok(ms < 60 + 60, `token path took ${ms.toFixed(1)} ms`); // includes the mock's 60 ms sleep
 });

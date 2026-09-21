@@ -53,8 +53,10 @@ Every call, expandable, with the exact request and Jev's raw response:
 ## Chess
 
 Standard chess with rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0
-(BSD-2-Clause, `functions/_lib/vendor/`). X is White. The client sends the SAN move list; the server
-replays it every request. For every legal move code computes what it captures, whether the moved
+(BSD-2-Clause, `functions/_lib/vendor/`). X is White. The server returns an HMAC-signed snapshot of the
+position (FEN plus a repetition table) that the client sends back, so a request loads the position in
+microseconds instead of replaying the move list; the list is still sent as context for Jev, and a request
+without a valid snapshot falls back to replaying it. For every legal move code computes what it captures, whether the moved
 piece can be taken back (attacked and undefended, or by something cheaper; a king only takes an
 undefended piece), what other piece it leaves en prise, what it threatens, check, mate, castling,
 development, and ranks them. Piece safety is a static exchange over every attacker and defender on the
