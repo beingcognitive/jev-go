@@ -10,6 +10,9 @@ Hosted on **Cloudflare Pages** with three Pages Functions, one per game.
 
 ## Three modes
 
+The page plays **Player** mode only; Assisted and Naked stay in the API (`mode` in the request body)
+for measurement.
+
 | mode | what code does | what Jev sees | who decides |
 |---|---|---|---|
 | **Player** (default) | full perception: fives, open/closed/split fours, open threes, forks, "this move loses next turn"; plays forced wins and blocks itself; prunes to a ranked pool of ~12 candidates | one `choice` question over the pool, each option annotated with exactly what it creates and blocks, plus a threat summary in the state | code for forced tactics, **Jev for everything else** |
@@ -31,9 +34,9 @@ first tap aims a stone (a ghost appears with a "Place H8" button) and a second t
 mouse previews on hover and plays on click. Under the board: the status line with the record chip
 (Recorded, Recorded as Name, Practice opponent, Not recorded), Pass or Place when needed, the result
 card at game end, a one-line card saying what Jev played, how sure it was and why, and then every
-call to Jev with the exact request and raw response. The top bar holds the menu (game, new game,
-your games, hall of fame, about Jev), this game's numbers in the centre on wide screens, the
-settings (thoughts on the board, the experiment modes) and sign-in. Jev's candidate list and the
+call to Jev with the exact request and raw response. Jev's likely moves are drawn on the board after
+its move and fade when you start yours. The top bar holds the menu (game, new game, your games, hall
+of fame, about Jev), this game's numbers in the centre on wide screens, and sign-in. Jev's candidate list and the
 per-move table sit beside the board on wide screens and below it on a phone.
 
 ## Go 9×9

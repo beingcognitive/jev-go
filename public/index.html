@@ -88,9 +88,6 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .last.under{opacity:0;transition:opacity 1.2s ease .6s}
 .grid.faded .pick{opacity:0}
 .grid.faded .last.under{opacity:1}
-/* Hide: Jev's marks are never drawn */
-.grid.hidethoughts .heat,.grid.hidethoughts .cand,.grid.hidethoughts .truth,.grid.hidethoughts .pick,.grid.hidethoughts .pickc{display:none}
-.grid.hidethoughts .last.under{opacity:1}
 @keyframes pop{from{transform:scale(.55);opacity:.3}to{transform:scale(1);opacity:1}}
 .stone.new{animation:pop .22s ease-out}
 .cand{position:absolute;inset:30%;border-radius:50%;border:1.5px solid var(--felt);opacity:.5;z-index:1}
@@ -241,7 +238,6 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
   <a class="brand" href="./">Beat Jev</a>
   <div class="strip" id="strip" aria-label="This game's numbers"></div>
   <div class="topright">
-    <button class="iconbtn" id="settingsbtn" aria-label="Settings" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
     <div class="who" id="who">
       <div id="gsi"></div>
       <span id="whoin" hidden><img id="whopic" alt="" hidden><span id="whoname"></span> <button class="small" id="signout">Sign out</button></span>
@@ -299,8 +295,7 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
         <h3>What the marks mean</h3>
         <ul class="marks">
           <li>Green discs are Jev's five most likely moves, sized by probability. The number on its last stone is how likely it thought that move was.</li>
-          <li>Thin rings mark the candidates code offered in Player mode.</li>
-          <li>A dashed red ring marks a forced point Jev missed in Naked or Assisted mode.</li>
+          <li>Thin rings mark the other candidates code offered.</li>
           <li>"Via" says who decided: forced and only-move were played by code without a call, best is Jev's own pick, and the heuristic rank is where that pick sat in the code's ordering.</li>
         </ul>
       </div>
@@ -310,7 +305,7 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
       <div class="body">
         <div class="stats" id="gamestats"></div>
         <div class="tablewrap"><table>
-          <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th id="h1">Win detect</th><th id="h2">Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
+          <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th>ms</th><th>Tokens</th></tr></thead>
           <tbody id="turns"></tbody>
         </table></div>
       </div>
@@ -356,35 +351,18 @@ dialog.drawer::backdrop{background:rgba(30,33,28,.38)}
         <p><b>Jev</b> is TypeSafe AI's System One decision model. It does not generate text. You give it a state and a typed question with a list of options, and it returns one choice with a probability for every option. That is the whole interface, which is why a call costs a fraction of a cent and answers in a few hundred milliseconds.</p>
         <p><b>Why a board game.</b> We first tried to play Go against large language models the usual way: describe the board in text, ask for a move. It was expensive, slow, and the models hallucinated: stones that were not there, illegal points, confident nonsense. Jev cannot hallucinate a move, because it can only pick from the options it is given, and every option here is legal by construction. Code computes the position (threats, captures, material); Jev judges among the candidates. The calls under the board show exactly what it saw and what it answered.</p>
         <p><b>What counts.</b> A game against the live Jev is recorded move by move on the server. Beat it and your name goes on the hall of fame. Sign in with Google to keep your games on any device; only a hashed id and your first name are stored, never your email.</p>
+        <h3>How Jev plays this game</h3>
+        <div class="help" id="about"></div>
+        <div class="help" id="backendhelp"></div>
       </div>
     </details>
   </div>
 </dialog>
 
-<dialog class="drawer right" id="settings" aria-label="Settings">
-  <div class="drawerhead"><b>Settings</b><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-  <div class="drawerbody">
-    <div class="setting"><div class="lab">Jev's thoughts on the board</div>
-      <div class="seg" id="thoughtseg" role="radiogroup" aria-label="Jev's thoughts on the board">
-        <button type="button" data-v="fade">Fade</button><button type="button" data-v="keep">Keep</button><button type="button" data-v="hide">Hide</button>
-      </div>
-      <div class="help" id="thoughthelp"></div>
-    </div>
-    <div class="setting"><div class="lab">Opponent mode for the next game (experiments)</div>
-      <div class="seg" id="modeseg" role="radiogroup" aria-label="Mode">
-        <button type="button" data-v="player">Player</button><button type="button" data-v="assisted">Assisted</button><button type="button" data-v="naked">Naked</button>
-      </div>
-      <div class="help" id="modehelp"></div>
-    </div>
-    <h3>How Jev plays this game</h3>
-    <div class="help" id="about"></div>
-    <div class="help" id="backendhelp"></div>
-  </div>
-</dialog>
 <script>
 const CFG={
   gomoku:{ title:"Can you beat Jev at Gomoku?", name:"Gomoku", sub:"Five in a row on a 15×15 board. Black moves first.",
-    about:"In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
+    about:"Code does the perception and the forced tactics (fives, fours, open threes, forks), plays forced wins and blocks itself, and hands Jev a ranked, annotated pool of about twelve candidates. Jev judges among them.",
     size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cap:40, endpoint:"/api/move",
     q1:"win_now", q2:"must_block", t1:"win", t2:"block", h1:"Win detect", h2:"Block detect", l1:"wins found", l2:"forced blocks found", pass:false, ls:"jev-gomoku-v2" },
   go:{ title:"Can you beat Jev at Go?", name:"Go", sub:"9×9, area scoring, komi 7.5. Capture dead stones before you pass; two passes end the game.",
@@ -399,13 +377,14 @@ const CFG={
 const GLYPH={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
 const PVAL={p:1,n:3,b:3,r:5,q:9,k:0};
 const NAMEP={q:"queen",r:"rook",b:"bishop",n:"knight"};
-const LSMODE="jev-gomoku-mode", LSGAME="jev-game", LSSESSION="jev-session", LSTHOUGHTS="jev-thoughts";
+const LSGAME="jev-game", LSSESSION="jev-session";
 const GOOGLE_CLIENT_ID="473797382868-5b8l5j9k2c3pueepgqr9hhl8e3qrvjru.apps.googleusercontent.com";
 let me=null; // { session, user:{id,name,picture}, expiresAt }
 try{ const raw=localStorage.getItem(LSSESSION); if(raw){ const v=JSON.parse(raw); if(v&&v.session&&v.expiresAt>Date.now()) me=v; } }catch{}
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
-let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false;
+let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", fadeTimer=null, fadeArmed=false;
+const modeSel="player", thoughtsSel="fade"; // the page plays the real opponent and lets Jev's marks fade when you start your move
 let lastPointer=(window.matchMedia&&matchMedia("(hover:hover)").matches)?"mouse":"touch"; // seeded from the device, then kept current by every press
 let gsiDown=false; // the Google script failed to load
 let ioOpen=new Set(), ioBuiltFor=-1; // which API-call entries the reader opened, and how many turns the log was last built for
@@ -416,12 +395,6 @@ const lsKey=()=>cfg.ls+"::"+recordBackend;
 function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(lsKey())||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
 function saveScore(){ try{ localStorage.setItem(lsKey(),JSON.stringify(score)); }catch{} }
 function syncRecordBackend(be){ if(!be||be===recordBackend) return; recordBackend=be; try{ localStorage.setItem("jev-last-backend",be); }catch{} score=loadScore(); }
-const MODEHELP={
-  player:"The real opponent. Code handles the forced tactics; Jev chooses among the moves worth considering.",
-  assisted:"An experiment. Jev sees every legal point with the facts about each one; its win and block claims are checked before they are played.",
-  naked:"An experiment. Jev sees every legal point and nothing else. The weakest, and the honest measurement."
-};
-const THOUGHTHELP={ fade:"Jev's likely moves appear after its move and fade when you start yours.", keep:"They stay on the board until Jev's next move.", hide:"Never drawn on the board." };
 // Server errors, in the player's words. Anything unlisted is shown as it came.
 const HUMAN_ERR={
   "bad state":"This game lost its link to the server. You can keep playing, but it will not be recorded.",
@@ -432,7 +405,7 @@ const HUMAN_ERR={
   "ko":"Ko: you cannot retake that point straight away. Play somewhere else first.", "superko":"That would repeat a position already played.", "suicide":"That stone would have no liberties.",
 };
 const friendly=(m)=>HUMAN_ERR[m]||(/^HTTP|^Failed to fetch|NetworkError/.test(m)?"The server did not answer. Check your connection and try again.":m);
-try{ const m=localStorage.getItem(LSMODE); if(MODEHELP[m]) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; const t=localStorage.getItem(LSTHOUGHTS); if(THOUGHTHELP[t]) thoughtsSel=t; }catch{}
+try{ const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; }catch{}
 
 // The board is measured from its column, never from the viewport, so scrollbars and gutters cannot push it out.
 function fitBoard(){
@@ -712,7 +685,7 @@ function renderJevCard(pickP){
   if(!t.answers) lead=`Code played <b>${esc(shown)}</b> for Jev: a forced move, no call made.`;
   else if(p!=null) lead=`Jev played <b>${esc(shown)}</b>, giving it <span class="p">${Math.round(p*100)}%</span>.`;
   else lead=`Jev played <b>${esc(shown)}</b>.`;
-  const showLegend=t.answers&&thoughtsSel!=="hide"&&S.status!=="replay";
+  const showLegend=t.answers&&S.status!=="replay";
   card.innerHTML=`<div class="lead">${lead}</div>${why?`<div class="why">${esc(why)}</div>`:""}${showLegend?`<div class="legend">Green discs are its other likely moves, sized by probability.</div>`:""}`;
 }
 
@@ -766,11 +739,10 @@ function gameNumbers(){
 }
 
 function render(light){
-  $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2; $("about").textContent=cfg.about;
+  $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("about").textContent=cfg.about;
   const lastKey=S.moves.length? S.moves[S.moves.length-1].split(" ")[1] : null;
   const lastIsJev = S.last && !S.busy && S.moves.length && (cfg.chess ? (toMove()===S.human && S.moves[S.moves.length-1]===S.last.move) : S.moves[S.moves.length-1].startsWith(S.jev+" "));
   const pickP = (lastIsJev && S.last.answers) ? (S.last.answers.best_move.top.find(([k])=>k===S.last.move)||[])[1] : undefined;
-  gridEl.classList.toggle("hidethoughts",thoughtsSel==="hide");
   const heat={}, heatRank={}; let pmax=0; const candSet=new Set();
   if(S.last&&S.last.answers){ const top=S.last.answers.best_move.top; top.forEach(([k,p],i)=>{ if(k==="pass") return; heat[k]=p; pmax=Math.max(pmax,p); heatRank[k]=(top.length-1-i)*160; }); }
   if(S.last&&S.last.candidates) for(const c of S.last.candidates) candSet.add(c.key);
@@ -833,10 +805,6 @@ function render(light){
   if(S.game==="go"){ sl=`Captures: black ${S.captures.X}, white ${S.captures.O}`; if(S.score){ const s=S.score; sl+=`. Black ${s.black} vs white ${s.white} with komi ${s.komi}: ${s.winner==="X"?"black":"white"} by ${s.margin}.`; } }
   $("scoreline").textContent=sl;
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy||!!R; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
-  for(const b of $("modeseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===modeSel); b.setAttribute("aria-checked",b.dataset.v===modeSel); }
-  for(const b of $("thoughtseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===thoughtsSel); b.setAttribute("aria-checked",b.dataset.v===thoughtsSel); }
-  $("modehelp").textContent=(MODEHELP[modeSel]||"")+(S.status==="playing"&&S.mode!==modeSel?" Applies to your next game; this one stays in "+S.mode+" mode.":"");
-  $("thoughthelp").textContent=THOUGHTHELP[thoughtsSel]||"";
   renderJevCard(pickP);
 
   const t=S.last;
@@ -865,17 +833,15 @@ function render(light){
   const g=gameNumbers();
   $("movecnt").textContent=g.moves?`(${g.moves} by Jev)`:"";
   $("gamestats").innerHTML=stat(g.moves,"Jev moves")+stat(g.forced,"played by code")+stat(g.calls,"Jev calls")+stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
-    stat(`${g.q1Found}/${g.q1Opp}`,cfg.l1)+stat(`${g.q2Found}/${g.q2Need}`,cfg.l2)+
     stat(g.calls?Math.round(g.latency/g.calls):"–","avg ms per call")+stat(g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","avg input tokens");
   $("strip").innerHTML=[[g.moves,"Jev moves"],[g.forced,"by code"],[g.calls,"calls"],[`${g.agree}/${g.ranked}`,"heuristic #1"],[g.calls?Math.round(g.latency/g.calls)+" ms":"–","per call"],[g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","tokens in"]].map(([n,l])=>`<span><b>${n}</b>${l}</span>`).join("");
-  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t1],((x.truth&&x.truth[cfg.t1])||[]).length)}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t2],((x.truth&&x.truth[cfg.t2])||[]).length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${esc(x.usage&&x.usage.input!=null?x.usage.input:"–")}</td></tr>`).join("");
+  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${esc(x.usage&&x.usage.input!=null?x.usage.input:"–")}</td></tr>`).join("");
   renderIO();
 
   $("alltimeTitle").textContent=`On this device, ${recordBackend==="native"?"against Jev":"against the practice opponent"}`;
   $("alltime").innerHTML=
     stat(score.games,"games")+stat(`${score.jev}–${score.human}–${score.draw}`,"Jev, you, draws")+stat(pct(score.jev,score.games),"Jev win rate")+
     stat(pct(score.agree,score.ranked),`heuristic #1 (${score.ranked})`)+
-    stat(pct(score.q1Found,score.q1Opp),`${cfg.l1} (${score.q1Opp})`)+stat(pct(score.q2Found,score.q2Need),`${cfg.l2} (${score.q2Need})`)+
     stat(score.calls?Math.round(score.latency/score.calls):"–","avg ms per call");
 }
 
@@ -886,7 +852,6 @@ for(const d of document.querySelectorAll("dialog.drawer")){
   for(const b of d.querySelectorAll("[data-close]")) b.addEventListener("click",()=>d.close());
 }
 $("menubtn").addEventListener("click",()=>openDrawer("menu"));
-$("settingsbtn").addEventListener("click",()=>openDrawer("settings"));
 
 // ---- sign in with Google ----
 function renderWho(){
@@ -1019,8 +984,6 @@ $("again").addEventListener("click",()=>startNew(S&&S.jev==="X"?"X":"O"));
 $("place").addEventListener("click",()=>{ if(S&&S.aim){ const k=S.aim; S.aim=null; play(k); } });
 $("pass").addEventListener("click",()=>{ if(S.game==="go"){ S.aim=null; startingMove(); play("pass"); } });
 $("resetscore").addEventListener("click",()=>{ if(!confirm("Reset the tally kept on this device? Recorded games and the hall of fame are not affected.")) return; score={...DEFAULT_SCORE}; saveScore(); render(); });
-for(const b of $("modeseg").querySelectorAll("button")) b.addEventListener("click",()=>{ modeSel=b.dataset.v; try{ localStorage.setItem(LSMODE,modeSel); }catch{} render(); });
-for(const b of $("thoughtseg").querySelectorAll("button")) b.addEventListener("click",()=>{ thoughtsSel=b.dataset.v; try{ localStorage.setItem(LSTHOUGHTS,thoughtsSel); }catch{} scheduleFade(); render(); });
 for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{
   if(S.busy||R||b.dataset.v===gameSel) return;
   const prev=gameSel; gameSel=b.dataset.v;
