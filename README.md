@@ -84,14 +84,28 @@ Storage is Cloudflare D1, set up in the dashboard: Workers & Pages → D1 → cr
 D1 binding with variable name `DB` for Production and Preview, and redeploy. Without the binding the
 server keeps records in memory only.
 
+## Sign in with Google
+
+Optional. The page shows Google's sign-in button; the browser posts the ID token to `POST /api/login`,
+the server verifies Google's RS256 signature against Google's published keys with WebCrypto, checks
+issuer, audience and expiry, and issues its own 30-day HMAC session. Every move then carries the
+session, so games and wins are attributed automatically, the hall of fame shows your Google first
+name without a claim, and `POST /api/me` lists your games with replay links on any device.
+
+Stored: a hash of the Google subject id and the display name. Never the email or anything from the
+mailbox; sign-in requests identity only. The OAuth client id is public and set in the page and in
+`functions/_lib/auth.js` (override with a `GOOGLE_CLIENT_ID` variable). Authorized origins:
+`https://jev-go.chardonn.ai` and `http://localhost:3111`.
+
 ## Layout
 
 ```
 functions/api/move.js     Pages Function: POST /api/move (Gomoku)
 functions/api/go.js       Pages Function: POST /api/go   (Go 9×9)
 functions/api/chess.js    Pages Function: POST /api/chess
-functions/api/leaderboard.js, game/[id].js, claim.js   records API
+functions/api/leaderboard.js, game/[id].js, claim.js, me.js, login.js   records and sign-in API
 functions/_lib/session.js, store.js, records.js         signed sessions, D1/memory store, read cores
+functions/_lib/google.js, auth.js                       Google ID token verification, player sessions
 functions/_lib/move.js    runtime-agnostic core (prompt build, Jev call, verify, decide)
 functions/_lib/gomoku.js  Gomoku threat engine, candidate ranking, descriptions
 functions/_lib/go.js      Go engine: groups, captures, superko, scoring, annotations

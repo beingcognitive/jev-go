@@ -671,3 +671,57 @@ test("records: leaderboard lists only real-Jev human wins and the memory store s
   assert.equal((await handleGame({ id: "zz" }, {}, {})).status, 400);
   assert.equal((await handleGame({ id: "0".repeat(16) }, {}, {})).status, 404);
 });
+
+// ---------------- Google sign-in, sessions, attribution ----------------
+import { verifyGoogleIdToken } from "./functions/_lib/google.js";
+import { handleLogin, userFromSession, DEFAULT_GOOGLE_CLIENT_ID } from "./functions/_lib/auth.js";
+import { handleMe } from "./functions/_lib/records.js";
+
+const b64u = (bytes) => Buffer.from(bytes).toString("base64url");
+async function fakeGoogle(claims, { kid = "k1", alg = "RS256" } = {}) {
+  const kp = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
+  const jwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
+  const header = b64u(JSON.stringify({ alg, kid, typ: "JWT" })), payload = b64u(JSON.stringify(claims));
+  const sig = b64u(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", kp.privateKey, new TextEncoder().encode(`${header}.${payload}`)));
+  return { token: `${header}.${payload}.${sig}`, jwks: async () => [{ kty: "RSA", kid: "k1", n: jwk.n, e: jwk.e, alg: "RS256", use: "sig" }] };
+}
+const now = () => Math.floor(Date.now() / 1000);
+const claims = (extra = {}) => ({ iss: "https://accounts.google.com", aud: DEFAULT_GOOGLE_CLIENT_ID, sub: "1234567890", email: "x@example.com", email_verified: true, name: "Kyung-Hoon Kim", given_name: "Kyung-Hoon", picture: "https://example.com/p.png", iat: now(), exp: now() + 3600, ...extra });
+
+test("google: a correctly signed ID token verifies; wrong audience, issuer, expiry, key or signature fail", async () => {
+  const g = await fakeGoogle(claims());
+  const u = await verifyGoogleIdToken(g.token, DEFAULT_GOOGLE_CLIENT_ID, g.jwks);
+  assert.equal(u.sub, "1234567890"); assert.equal(u.given_name, "Kyung-Hoon");
+  await assert.rejects(verifyGoogleIdToken(g.token, "other-client", g.jwks), /bad credential/);
+  const badIss = await fakeGoogle(claims({ iss: "https://evil.example" })); await assert.rejects(verifyGoogleIdToken(badIss.token, DEFAULT_GOOGLE_CLIENT_ID, badIss.jwks), /bad credential/);
+  const expired = await fakeGoogle(claims({ exp: now() - 3600 })); await assert.rejects(verifyGoogleIdToken(expired.token, DEFAULT_GOOGLE_CLIENT_ID, expired.jwks), /expired/);
+  const otherKey = await fakeGoogle(claims()); await assert.rejects(verifyGoogleIdToken(g.token, DEFAULT_GOOGLE_CLIENT_ID, otherKey.jwks), /bad credential/);
+  const tampered = g.token.slice(0, -4) + "AAAA"; await assert.rejects(verifyGoogleIdToken(tampered, DEFAULT_GOOGLE_CLIENT_ID, g.jwks), /bad credential/);
+  const none = await fakeGoogle(claims(), { alg: "none" }); await assert.rejects(verifyGoogleIdToken(none.token, DEFAULT_GOOGLE_CLIENT_ID, none.jwks), /bad credential/);
+  await assert.rejects(verifyGoogleIdToken(42, DEFAULT_GOOGLE_CLIENT_ID, g.jwks), /bad credential/);
+});
+
+test("login issues a session; the session attributes games; /api/me lists them; the hall of fame shows the name", async () => {
+  const g = await fakeGoogle(claims());
+  const login = await handleLogin({ credential: g.token }, {}, g.jwks);
+  assert.equal(login.status, 200); assert.equal(login.body.user.name, "Kyung-Hoon"); assert.match(login.body.user.id, /^g_[0-9a-f]{24}$/);
+  assert.equal((await handleLogin({ credential: "nope" }, {}, g.jwks)).status, 401);
+  const session = login.body.session;
+  assert.deepEqual((await userFromSession({}, session)).name, "Kyung-Hoon");
+  assert.equal(await userFromSession({}, session.slice(0, -2) + "zz"), null);
+  assert.equal(await userFromSession({}, ""), null);
+  // play a chess game under the session: the first request creates the record with the user attached
+  const r1 = await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player", session }, {});
+  assert.equal(r1.status, 200); if (r1.after) await r1.after();
+  const g1 = await storeFor({}).getGame(r1.body.gameId);
+  assert.equal(g1.user_id, login.body.user.id); assert.equal(g1.name, "Kyung-Hoon");
+  const mine = await handleMe({ session }, {});
+  assert.equal(mine.status, 200); assert.ok(mine.body.games.some((x) => x.id === r1.body.gameId));
+  assert.equal((await handleMe({ session: "bad" }, {})).status, 401);
+  // a finished human win under a session appears in the leaderboard under the Google name, no claim needed
+  const store = storeFor({});
+  await store.upsertGame({ id: "e".repeat(16), game: "go", mode: "player", jev: "O", backend: "native", model: "jev-1.13.0", result: "human_wins", plies: 40, created_at: Date.now(), ended_at: Date.now(), user_id: login.body.user.id, name: "Kyung-Hoon" });
+  const lb = await store.leaderboard("go");
+  assert.equal(lb[0].name, "Kyung-Hoon");
+  assert.equal((await handleClaim({ state: r1.body.state, name: "someone else" }, {})).status, 400);
+});

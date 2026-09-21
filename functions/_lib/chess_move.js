@@ -5,6 +5,7 @@
 import * as C from "./chess.js";
 import { openSession, sealSession, turnRows, record } from "./session.js";
 import { storeFor } from "./store.js";
+import { userFromSession } from "./auth.js";
 import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode } from "./jev.js";
 
 const reply = (status, body) => ({ status, body });
@@ -83,6 +84,7 @@ export async function handleChessMove(body, env = {}) {
       c = C.fromSnapshot(s.pos);
     } else c = C.replay(mv);
     const store = storeFor(env);
+    const user = await userFromSession(env, body && body.session);
     const startPly = mv.length;
     let humanBoard = null, humanSan = null;
     const done = async (status, jevInfo) => {
@@ -98,7 +100,7 @@ export async function handleChessMove(body, env = {}) {
           state: s.verified ? await sealSession(env, "chess", s, mv.length, C.snapshot(c)) : null, gameId: s.verified ? s.id : null, verified: s.verified,
           status, result: st.result, backend: be.kind, mode, jev: jevInfo,
         },
-        after: () => record(store, "chess", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length,
+        after: () => record(store, "chess", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,
           rows: turnRows(s.id, startPly, humanBoard, humanSan, jevInfo, C.boardRows(c), toSquare) }),
       };
     };

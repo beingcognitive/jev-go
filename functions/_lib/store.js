@@ -9,7 +9,7 @@ export function memoryStore() {
     kind: "memory",
     async upsertGame(g) {
       const prev = games.get(g.id);
-      games.set(g.id, { ...(prev || {}), ...g });
+      games.set(g.id, { ...(prev || {}), ...g, name: g.name || (prev && prev.name) || null, user_id: g.user_id || (prev && prev.user_id) || null });
       if (g.result && !(prev && prev.result) && g.backend === "native") { const k = `${g.game}|${g.result}`; counters.set(k, (counters.get(k) || 0) + 1); }
     },
     async addTurn(t) { const arr = turns.get(t.game_id) || []; arr[t.ply] = t; turns.set(t.game_id, arr); },
@@ -20,6 +20,9 @@ export function memoryStore() {
       if (!g || g.result !== "human_wins" || g.name) return null;
       g.name = name;
       return g;
+    },
+    async myGames(userId, limit = 50) {
+      return [...games.values()].filter((g) => g.user_id === userId).sort((a, b) => b.created_at - a.created_at).slice(0, limit).map(ownGame);
     },
     async leaderboard(game) {
       return [...games.values()]
@@ -41,10 +44,11 @@ export function d1Store(db) {
     kind: "d1",
     async upsertGame(g) {
       await db.prepare(
-        `INSERT INTO games (id, game, mode, jev, backend, model, result, plies, name, created_at, ended_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10)
-         ON CONFLICT(id) DO UPDATE SET mode = ?3, model = COALESCE(?6, games.model), result = ?7, plies = ?8, ended_at = ?10`,
-      ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.result ?? null, g.plies, g.created_at, g.ended_at ?? null).run();
+        `INSERT INTO games (id, game, mode, jev, backend, model, result, plies, name, user_id, created_at, ended_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?11, ?12, ?9, ?10)
+         ON CONFLICT(id) DO UPDATE SET mode = ?3, model = COALESCE(?6, games.model), result = ?7, plies = ?8, ended_at = ?10,
+           name = COALESCE(games.name, ?11), user_id = COALESCE(games.user_id, ?12)`,
+      ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.result ?? null, g.plies, g.created_at, g.ended_at ?? null, g.name ?? null, g.user_id ?? null).run();
       // Counters keep stats() at three row reads instead of a scan; a game ends exactly once, so this runs once per game.
       if (g.result && g.backend === "native") {
         await db.prepare("INSERT INTO counters (game, result, n) VALUES (?1, ?2, 1) ON CONFLICT(game, result) DO UPDATE SET n = n + 1").bind(g.game, g.result).run();
@@ -67,6 +71,12 @@ export function d1Store(db) {
       const r = await db.prepare("UPDATE games SET name = ?2 WHERE id = ?1 AND result = 'human_wins' AND name IS NULL").bind(id, name).run();
       return r.meta && r.meta.changes ? this.getGame(id) : null;
     },
+    async myGames(userId, limit = 50) {
+      const { results } = await db.prepare(
+        "SELECT id, game, mode, jev, result, plies, model, created_at, ended_at FROM games WHERE user_id = ?1 ORDER BY created_at DESC LIMIT ?2",
+      ).bind(userId, limit).all();
+      return results.map(ownGame);
+    },
     async leaderboard(game) {
       const { results } = await db.prepare(
         `SELECT id, game, mode, plies, name, model, ended_at FROM games
@@ -84,6 +94,7 @@ export function d1Store(db) {
   };
 }
 
+const ownGame = (g) => ({ id: g.id, game: g.game, mode: g.mode, jev: g.jev, result: g.result || null, plies: g.plies, model: g.model || null, created_at: g.created_at, ended_at: g.ended_at || null });
 const publicGame = (g) => ({ id: g.id, game: g.game, mode: g.mode, plies: g.plies, name: g.name || "anonymous", model: g.model || null, ended_at: g.ended_at });
 
 let memory = null;

@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer onload="window.gsiReady&&window.gsiReady()"></script>
 <style>
 :root{
   --paper:#eef0ea; --sheet:#f7f8f4; --ink:#1e211c; --ink-2:#5a6156; --rule:#d4d9cf;
@@ -161,6 +162,10 @@ details.io h3{font-size:14px;margin:8px 0 4px;color:var(--ink-2);font-weight:400
 pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre}
 footer{max-width:1120px;margin:22px auto 0;color:var(--ink-2);font-size:13px;line-height:1.5;max-width:80ch}
 .claim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.who{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px;font-size:15px}
+.who img{width:28px;height:28px;border-radius:50%}
+.who .na{font-size:14px}
+#gsi{min-height:40px}
 .claim input{font:inherit;font-size:15px;padding:7px 10px;border-radius:4px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);min-width:200px}
 .lb{width:100%;border-collapse:collapse;font-size:14px}
 .lb td,.lb th{padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap}
@@ -206,6 +211,11 @@ a.link{color:var(--felt)}
           <button id="pass" hidden>Pass</button>
         </div>
       </div>
+      <div class="who" id="who">
+        <div id="gsi"></div>
+        <span id="whoin" hidden><img id="whopic" alt="" hidden><span id="whoname"></span> <button class="small" id="signout">Sign out</button></span>
+        <span class="na" id="whohelp">Sign in with Google to keep your games and wins under your name, on any device.</span>
+      </div>
       <div class="claim" id="claim" hidden>
         <input id="claimname" maxlength="24" placeholder="Your name">
         <button class="primary" id="claimbtn">Add my name</button>
@@ -237,6 +247,11 @@ a.link{color:var(--felt)}
       <h2>Every call to Jev, request and response</h2>
       <div id="iolog"><span class="na">No calls yet.</span></div>
     </div>
+    <div class="panel" id="mypanel" hidden>
+      <h2 id="myTitle">My games</h2>
+      <div id="mystats" class="stats"></div>
+      <div class="tablewrap" id="mygames"></div>
+    </div>
     <div class="panel">
       <h2 id="lbTitle">Hall of fame</h2>
       <div id="lbstats" class="stats"></div>
@@ -265,7 +280,10 @@ const CFG={
 const GLYPH={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
 const PVAL={p:1,n:3,b:3,r:5,q:9,k:0};
 const NAMEP={q:"queen",r:"rook",b:"bishop",n:"knight"};
-const LSMODE="jev-gomoku-mode", LSGAME="jev-game";
+const LSMODE="jev-gomoku-mode", LSGAME="jev-game", LSSESSION="jev-session";
+const GOOGLE_CLIENT_ID="473797382868-5b8l5j9k2c3pueepgqr9hhl8e3qrvjru.apps.googleusercontent.com";
+let me=null; // { session, user:{id,name,picture}, expiresAt }
+try{ const raw=localStorage.getItem(LSSESSION); if(raw){ const v=JSON.parse(raw); if(v&&v.session&&v.expiresAt>Date.now()) me=v; } }catch{}
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
 let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false;
@@ -388,6 +406,7 @@ async function play(humanMove,localMove){
   S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
   try{
     const body={moves:snapshot?snapshot.moves:S.moves,humanMove,jev:S.jev,mode:modeSel};
+    if(me) body.session=me.session;
     if(S.game==="gomoku") body.board=S.board;
     if(S.token) body.state=S.token;
     let r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
@@ -410,7 +429,7 @@ async function play(humanMove,localMove){
     S.token=d.state||null; S.gameId=d.gameId||S.gameId; S.verified=!!d.verified;
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
-    if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(); }
+    if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(); if(me&&S.verified) loadMyGames(); }
   }catch(e){ $("err").textContent=e.message; if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } }
   S.busy=false; S.pending=null; render();
 }
@@ -632,6 +651,39 @@ function render(){
     stat(score.calls?Math.round(score.latency/score.calls):"–","avg ms per call");
 }
 
+// ---- sign in with Google ----
+function renderWho(){
+  $("whoin").hidden=!me; $("gsi").hidden=!!me; $("whohelp").hidden=!!me;
+  if(me){ $("whoname").textContent=me.user.name; const pic=$("whopic"); if(me.user.picture){ pic.src=me.user.picture; pic.hidden=false; } else pic.hidden=true; }
+}
+window.gsiReady=function(){
+  if(!window.google||!google.accounts) return;
+  google.accounts.id.initialize({ client_id:GOOGLE_CLIENT_ID, callback:onGoogleCredential, auto_select:false, ux_mode:"popup" });
+  if(!me) google.accounts.id.renderButton($("gsi"),{ theme:"outline", size:"medium", shape:"pill", text:"signin_with", logo_alignment:"left" });
+};
+async function onGoogleCredential(resp){
+  try{
+    const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({credential:resp.credential})});
+    const d=await r.json(); if(!d.ok) throw new Error(d.error||"sign-in failed");
+    me={session:d.session,user:d.user,expiresAt:d.expiresAt}; try{ localStorage.setItem(LSSESSION,JSON.stringify(me)); }catch{}
+    renderWho(); loadMyGames(); render();
+  }catch(e){ $("err").textContent="Sign-in failed: "+e.message; }
+}
+$("signout").addEventListener("click",()=>{ me=null; try{ localStorage.removeItem(LSSESSION); }catch{} if(window.google&&google.accounts) google.accounts.id.disableAutoSelect(); renderWho(); $("mypanel").hidden=true; if(window.gsiReady) window.gsiReady(); render(); });
+async function loadMyGames(){
+  if(!me){ $("mypanel").hidden=true; return; }
+  try{
+    const r=await fetch("/api/me",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({session:me.session})});
+    const d=await r.json(); if(!d.ok){ if(r.status===401){ me=null; try{ localStorage.removeItem(LSSESSION); }catch{} renderWho(); } throw new Error(d.error); }
+    $("mypanel").hidden=false; $("myTitle").textContent=`My games, ${esc(d.user.name)}`;
+    const st=d.stats; $("mystats").innerHTML=stat(st.games,"finished")+stat(st.wins,"won")+stat(st.losses,"lost")+stat(st.draws,"drawn");
+    const label={gomoku:"Gomoku",go:"Go",chess:"chess"};
+    $("mygames").innerHTML= d.games.length ? `<table class="lb"><thead><tr><th>When</th><th>Game</th><th>Mode</th><th>Result</th><th>Plies</th><th></th></tr></thead><tbody>`+
+      d.games.map(g=>`<tr><td>${g.created_at?new Date(g.created_at).toLocaleDateString():""}</td><td>${label[g.game]||esc(g.game)}</td><td>${esc(g.mode)}</td><td>${g.result==="human_wins"?"you won":g.result==="jev_wins"?"Jev won":g.result==="draw"?"draw":"in progress"}</td><td>${g.plies}</td><td><a href="?replay=${esc(g.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`
+      : `<span class="na">No games yet under this account. Play one and it will appear here.</span>`;
+  }catch(e){ $("mygames").innerHTML=`<span class="na">Could not load your games (${esc(e.message)}).</span>`; }
+}
+
 // ---- hall of fame ----
 async function loadLeaderboard(fresh){
   $("lbTitle").textContent=`Hall of fame: people who beat Jev at ${cfg.name}`;
@@ -648,6 +700,7 @@ async function loadLeaderboard(fresh){
 function renderClaim(){
   const box=$("claim");
   const won=S.status==="human_wins";
+  if(me&&won&&S.verified&&!S.claimed){ box.hidden=false; $("claimname").hidden=true; $("claimbtn").hidden=true; $("claimmsg").innerHTML= S.backend==="native" ? `Recorded under <b>${esc(me.user.name)}</b> · <a class="link" href="?replay=${esc(S.gameId)}">replay link</a>` : "You beat the mock, not Jev, so this one is not in the hall of fame."; return; }
   if(!won||!S.verified||S.claimed){ box.hidden=!(won&&S.claimed); if(won&&S.claimed){ $("claimname").hidden=true; $("claimbtn").hidden=true; $("claimmsg").innerHTML=`Recorded as <b>${esc(S.claimed)}</b> · <a class="link" href="?replay=${esc(S.gameId)}">replay link</a>`; } return; }
   box.hidden=false; $("claimname").hidden=false; $("claimbtn").hidden=false;
   $("claimmsg").textContent= S.backend==="native" ? "You beat the real Jev. Add your name to the hall of fame." : "You beat the mock, not Jev, so this one is not recorded.";
@@ -705,6 +758,7 @@ for(const b of $("modeseg").querySelectorAll("button")) b.addEventListener("clic
 for(const b of $("thoughtseg").querySelectorAll("button")) b.addEventListener("click",()=>{ thoughtsSel=b.dataset.v; try{ localStorage.setItem(LSTHOUGHTS,thoughtsSel); }catch{} scheduleFade(); render(); });
 for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||b.dataset.v===gameSel) return; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} newGame("O"); render(); loadLeaderboard(); if(cfg.chess) play(null); });
 
+renderWho(); if(me) loadMyGames();
 const replayId=new URLSearchParams(location.search).get("replay");
 if(replayId){ newGame("O"); render(); startReplay(replayId).catch(e=>{ $("err").textContent=e.message; }); loadLeaderboard(); }
 else { newGame("O"); render(); loadLeaderboard(); if(cfg.chess) play(null); }

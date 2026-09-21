@@ -2,6 +2,7 @@
 import { storeFor } from "./store.js";
 import { verify } from "./token.js";
 import { secretOf } from "./session.js";
+import { userFromSession } from "./auth.js";
 
 const GAMES = new Set(["gomoku", "go", "chess"]);
 const reply = (status, body) => ({ status, body });
@@ -27,6 +28,16 @@ export async function handleGame(params, query, env = {}) {
   }));
   const { id: gid, game: g, mode, jev, backend, model, result, plies, name, created_at, ended_at } = game;
   return reply(200, { ok: true, game: { id: gid, game: g, mode, jev, backend, model, result, plies, name: name || null, created_at, ended_at }, turns });
+}
+
+// POST { session }: the signed-in player's recent games.
+export async function handleMe(body, env = {}) {
+  const user = await userFromSession(env, body && body.session);
+  if (!user) return reply(401, { ok: false, error: "not signed in" });
+  const games = await storeFor(env).myGames(user.id);
+  const stats = { games: 0, wins: 0, losses: 0, draws: 0 };
+  for (const g of games) { if (!g.result) continue; stats.games++; if (g.result === "human_wins") stats.wins++; else if (g.result === "jev_wins") stats.losses++; else stats.draws++; }
+  return reply(200, { ok: true, user, games, stats });
 }
 
 // POST { state, name }: the state token proves the caller played the game; the store checks it was a human win.

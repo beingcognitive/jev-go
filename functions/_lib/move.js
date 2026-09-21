@@ -8,6 +8,7 @@ import * as G from "./gomoku.js";
 import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode, MODES } from "./jev.js";
 import { openSession, sealSession, turnRows, record } from "./session.js";
 import { storeFor } from "./store.js";
+import { userFromSession } from "./auth.js";
 export { backend, normalizeMode, MODES };
 
 const RULES =
@@ -147,13 +148,14 @@ export async function handleMove(body, env = {}) {
     const mv = moves.slice();
     const be = backend(env);
     const store = storeFor(env);
+    const user = await userFromSession(env, body && body.session);
     const startPly = mv.length;
     let humanBoard = null, humanKey = null;
     const done = async (status, jevInfo) => ({
       status: 200,
       body: { ok: true, board: G.toRows(board), moves: mv, status, backend: be.kind, mode, jev: jevInfo,
         state: s.verified ? await sealSession(env, "gomoku", s, mv.length, G.toRows(board)) : null, gameId: s.verified ? s.id : null, verified: s.verified },
-      after: () => record(store, "gomoku", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length,
+      after: () => record(store, "gomoku", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,
         rows: turnRows(s.id, startPly, humanBoard, humanKey, jevInfo, G.toRows(board)) }),
     });
 

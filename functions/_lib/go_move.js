@@ -5,6 +5,7 @@ import * as Go from "./go.js";
 import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode } from "./jev.js";
 import { openSession, sealSession, turnRows, record } from "./session.js";
 import { storeFor } from "./store.js";
+import { userFromSession } from "./auth.js";
 
 const reply = (status, body) => ({ status, body });
 const RULES =
@@ -106,6 +107,7 @@ export async function handleGoMove(body, env = {}) {
     const mv = s.verified && Array.isArray(s.pos) ? s.pos.slice() : moves.slice();
     let st = Go.replay(mv);
     const store = storeFor(env);
+    const user = await userFromSession(env, body && body.session);
     const startPly = mv.length;
     let humanBoard = null;
     const ended = () => st.passes >= 2 || st.count >= Go.MAX_MOVES;
@@ -113,7 +115,7 @@ export async function handleGoMove(body, env = {}) {
       status: 200,
       body: { ok: true, game: "go", moves: mv, board: Go.toRows(st.board), captures: st.captures, toMove: st.toMove, status, score, backend: be.kind, mode, jev: jevInfo,
         state: s.verified ? await sealSession(env, "go", s, mv.length, mv) : null, gameId: s.verified ? s.id : null, verified: s.verified },
-      after: () => record(store, "go", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length,
+      after: () => record(store, "go", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,
         rows: turnRows(s.id, startPly, humanBoard, humanMove, jevInfo, Go.toRows(st.board)) }),
     });
     const finish = (jevInfo) => { const sc = Go.score(st.board); return done(sc.winner === me ? "jev_wins" : "human_wins", jevInfo, sc); };

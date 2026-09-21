@@ -9,11 +9,13 @@ CREATE TABLE IF NOT EXISTS games (
   model TEXT,                  -- e.g. jev-1.13.0
   result TEXT,                 -- jev_wins | human_wins | draw, NULL while playing
   plies INTEGER NOT NULL,
-  name TEXT,                   -- winner's display name, claimed once
+  name TEXT,                   -- display name: the signed-in player's, or claimed once by an anonymous winner
+  user_id TEXT,                -- hashed Google subject id when signed in
   created_at INTEGER NOT NULL,
   ended_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS games_leaderboard ON games (game, result, backend, plies, ended_at);
+CREATE INDEX IF NOT EXISTS games_user ON games (user_id, created_at);
 
 CREATE TABLE IF NOT EXISTS turns (
   game_id TEXT NOT NULL,

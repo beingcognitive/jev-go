@@ -42,9 +42,10 @@ export function turnRows(gameId, startPly, board, humanMove, jevInfo, jevBoard, 
 }
 
 // Persist a request's outcome. Returns a promise the adapter hands to waitUntil.
-export async function record(store, game, s, { mode, jev, backend, model, status, plies, rows }) {
+export async function record(store, game, s, { mode, jev, backend, model, status, plies, rows, user }) {
   if (!s.verified) return;
   const over = status !== "playing";
-  await store.upsertGame({ id: s.id, game, mode, jev, backend, model: model || null, result: over ? status : null, plies, created_at: s.created || Date.now(), ended_at: over ? Date.now() : null });
+  await store.upsertGame({ id: s.id, game, mode, jev, backend, model: model || null, result: over ? status : null, plies, created_at: s.created || Date.now(), ended_at: over ? Date.now() : null,
+    user_id: user ? user.id : null, name: user ? user.name : null });
   for (const r of rows) await store.addTurn(r);
 }
