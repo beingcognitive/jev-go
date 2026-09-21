@@ -114,6 +114,7 @@ th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--pan
 .modehelp{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.35}
 details.io{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)}
 details.io summary{cursor:pointer;padding:6px 10px;font-size:13px;font-weight:600}
+.io.nocall{padding:6px 10px;font-size:13px;font-weight:600;opacity:.75}
 details.io .body{padding:0 10px 10px}
 details.io h3{font-size:12px;margin:8px 0 4px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between;align-items:center}
 pre{margin:0;max-height:320px;overflow:auto;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;white-space:pre}
@@ -373,10 +374,11 @@ const stat=(n,l)=>`<div class="stat"><div class="n">${n}</div><div class="l">${l
 const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String(o); } };
 
 function renderIO(){
-  const calls=S.turns.map((t,i)=>({t,i})).filter(x=>x.t.io);
-  if(!calls.length){ $("iolog").innerHTML=`<span class="na">No calls yet${S.turns.length?" (all moves so far were played by code)":""}.</span>`; return; }
-  $("iolog").innerHTML=calls.map(({t,i},idx)=>{
-    const open= idx===calls.length-1 ? " open" : "";
+  if(!S.turns.length){ $("iolog").innerHTML=`<span class="na">No calls yet.</span>`; return; }
+  const lastCall=S.turns.reduce((m,t,i)=>t.io?i:m,-1);
+  $("iolog").innerHTML=S.turns.map((t,i)=>{
+    if(!t.io) return `<div class="io nocall"><span>Move ${i+1} · played ${esc(t.move)} via ${esc(t.source)} · <span class="na">decided by code, no Jev call${t.note?" · "+esc(t.note):""}</span></span></div>`;
+    const open= i===lastCall ? " open" : "";
     const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
     return `<details class="io"${open}><summary>Move ${i+1} · played ${esc(t.move)} via ${esc(t.source)} · ${t.latencyMs} ms · ${esc(tokens(t))} · request ${(req.length/1024).toFixed(1)} KB</summary>
       <div class="body">
