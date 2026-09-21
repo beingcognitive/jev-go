@@ -163,7 +163,14 @@ export function threatSets(board, me, opp) {
   const win = pts.filter((p) => makesFive(board, p.r, p.c, me)).map((p) => p.key);
   const five = pts.filter((p) => makesFive(board, p.r, p.c, opp)).map((p) => p.key);
   // While `opp` can already complete five, a point that only stops a lesser threat is not a block.
-  const block = five.length ? five : pts.filter((p) => UNSTOPPABLE.has(analyzeMove(board, p.r, p.c, opp).cls)).map((p) => p.key);
+  // A four-three is only unstoppable if the forced block does not counter with a winning four of its own.
+  const block = five.length ? five : pts.filter((p) => {
+    const cls = analyzeMove(board, p.r, p.c, opp).cls;
+    if (!UNSTOPPABLE.has(cls)) return false;
+    if (cls !== "four_three") return true;
+    board[p.r][p.c] = opp;
+    try { return forcingWinner(board, me) === opp; } finally { board[p.r][p.c] = "."; }
+  }).map((p) => p.key);
   return { win, block };
 }
 

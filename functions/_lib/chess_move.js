@@ -83,8 +83,10 @@ export async function handleChessMove(body, env = {}) {
 
     if (humanMove !== null) {
       if (c.turn() !== opp) throw new Error("not the human's turn");
+      if (typeof humanMove !== "string" || humanMove.length > 10) throw new Error("illegal move");
       let m;
-      try { m = c.move(typeof humanMove === "string" ? humanMove : null); } catch { throw new Error("illegal move"); }
+      try { m = c.move(humanMove); } catch { throw new Error("illegal move"); }
+      if (m.san === "--") { c.undo(); throw new Error("illegal move"); }
       mv.push(m.san);
       if (C.status(c).over) return finish(null);
     } else if (c.turn() === opp) {

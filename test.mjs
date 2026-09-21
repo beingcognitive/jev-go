@@ -485,3 +485,40 @@ test("gomoku handleMove: a leading-zero coordinate is recorded canonically so th
   const next = await handleMove({ board: r.body.board, moves: r.body.moves, humanMove: "K9", jev: "O", mode: "player" }, {});
   assert.equal(next.status, 200, next.body.error);
 });
+
+// ---------------- review round 3 regressions (chess + round 2) ----------------
+
+test("chess: null moves and non-string input are rejected", async () => {
+  assert.throws(() => C.replay(["--"]), /null move/);
+  assert.equal((await handleChessMove({ moves: [], humanMove: 42, jev: "O" }, {})).status, 400);
+  assert.equal((await handleChessMove({ moves: [], humanMove: "--", jev: "O" }, {})).status, 400);
+  assert.equal((await handleChessMove({ moves: [], humanMove: ["e4"], jev: "O" }, {})).status, 400);
+});
+
+test("chess: a game reaching the ply cap ends as a draw instead of becoming unreplayable", async () => {
+  const { Chess } = await import("./functions/_lib/vendor/chess.js");
+  const at400 = new Chess("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 201");
+  assert.equal(C.plies(at400), 400);
+  assert.equal(C.status(at400).over, true); assert.match(C.status(at400).result, /ply limit/);
+  const at399 = new Chess("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 200");
+  assert.equal(C.plies(at399), 399); assert.equal(C.status(at399).over, false);
+});
+
+test("chess: attacker names are by type, not by value (bishop is not a knight)", () => {
+  const an = C.analyzeAll(C.replay(["e4", "e5", "d4", "Bb4+"]));
+  assert.match(an.find((a) => a.key === "Qd2").desc, /can be taken by a bishop/);
+});
+
+test("chess: leading moves carry the deep annotations, tail moves keep the cheap ones", () => {
+  const an = C.analyzeAll(C.replay(["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6"]));
+  assert.ok(an.length > 16);
+  assert.ok(an.slice(0, 16).every((a) => typeof a.oppBest === "number"));
+  assert.ok(an.every((a) => typeof a.desc === "string" && a.desc.length));
+});
+
+test("gomoku: a four-three whose forced block counters with an open four is not graded as a block", () => {
+  const b = boardWith({ H8: "X", I8: "X", J9: "X", J10: "X", J11: "X", A15: "X", C15: "X", E15: "X", J12: "O", G7: "O", H7: "O", I7: "O", A1: "O", C1: "O", E1: "O" });
+  assert.deepEqual(G.threatSets(b, "O", "X").block, []);
+  const real = boardWith({ H8: "X", I8: "X", J9: "X", J10: "X", J11: "X", J12: "O" });
+  assert.deepEqual(G.threatSets(real, "O", "X").block, ["J8"]);
+});

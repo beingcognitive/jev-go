@@ -17,11 +17,14 @@ export function replay(moves) {
   for (let i = 0; i < moves.length; i++) {
     const san = moves[i];
     if (typeof san !== "string" || san.length > 10) throw new Error(`bad move ${i}`);
-    if (c.isGameOver()) throw new Error("game is over");
-    try { c.move(san); } catch { throw new Error(`move ${i} ${san} illegal`); }
+    if (status(c).over) throw new Error("game is over");
+    let m;
+    try { m = c.move(san); } catch { throw new Error(`move ${i} ${san} illegal`); }
+    if (m.san === "--") throw new Error(`move ${i} illegal: null move`); // chess.js accepts "--"; standard chess does not
   }
   return c;
 }
+export const plies = (c) => 2 * (c.moveNumber() - 1) + (c.turn() === "b" ? 1 : 0);
 
 // 8 strings, rank 8 first; uppercase = white, lowercase = black, "." = empty.
 export function boardRows(c) {
@@ -44,28 +47,29 @@ export function status(c) {
   if (c.isThreefoldRepetition()) return { over: true, result: "draw by repetition", winner: null };
   if (c.isInsufficientMaterial()) return { over: true, result: "draw by insufficient material", winner: null };
   if (c.isDraw()) return { over: true, result: "draw by the fifty-move rule", winner: null };
+  if (plies(c) >= MAX_PLIES) return { over: true, result: `draw by the ${MAX_PLIES}-ply limit`, winner: null };
   return { over: false, result: null, winner: null };
 }
 
 // Attackers of `square` by `byColor`: cheapest non-king attacker value, and whether the king attacks it.
 function attackInfo(c, square, byColor) {
-  let cheapest = null, king = false;
+  let cheapest = null, attacker = null, king = false;
   for (const sq of c.attackers(square, byColor)) {
     const p = c.get(sq);
     if (!p) continue;
     if (p.type === "k") king = true;
-    else if (cheapest === null || VALUE[p.type] < cheapest) cheapest = VALUE[p.type];
+    else if (cheapest === null || VALUE[p.type] < cheapest) { cheapest = VALUE[p.type]; attacker = p.type; }
   }
-  return { cheapest, king };
+  return { cheapest, attacker, king };
 }
 // Material a `me` piece worth `val` on `square` is likely to lose: taken for nothing if undefended,
 // taken by something cheaper if defended; a king can only take an undefended piece.
 function riskOn(c, square, val, me) {
   const a = attackInfo(c, square, otherColor(me));
-  if (a.cheapest === null && !a.king) return { risk: 0, by: null };
-  if (!c.isAttacked(square, me)) return { risk: val, by: a.cheapest ?? 0 };
-  if (a.cheapest === null) return { risk: 0, by: null };
-  return { risk: Math.max(0, val - a.cheapest), by: a.cheapest };
+  if (a.cheapest === null && !a.king) return { risk: 0, attacker: null };
+  if (!c.isAttacked(square, me)) return { risk: val, attacker: a.attacker ?? "k" };
+  if (a.cheapest === null) return { risk: 0, attacker: null };
+  return { risk: Math.max(0, val - a.cheapest), attacker: a.attacker };
 }
 // After a move by `me`: the worst hanging `me` piece other than the one on `skip` (one-ply opponent reply).
 function worstHanging(c, me, skip) {
@@ -77,13 +81,12 @@ function worstHanging(c, me, skip) {
   }
   return { worst, what };
 }
-const byValue = (v) => Object.keys(VALUE).find((k) => VALUE[k] === v && k !== "k");
-
 const HOME_RANK = { w: "1", b: "8" };
 const CENTER = new Set(["d4", "e4", "d5", "e5"]);
 
-// Annotate one legal move. `c` is mutated and restored.
-export function analyzeMove(c, m) {
+// Annotate one legal move. `c` is mutated and restored. `deep` adds the scan for other pieces left
+// en prise (a full board scan, so analyzeAll only does it for the leading moves).
+export function analyzeMove(c, m, deep = true) {
   const me = m.color;
   const captured = (m.captured ? VALUE[m.captured] : 0) + (m.promotion ? VALUE[m.promotion] - 1 : 0);
   const moverVal = VALUE[m.promotion || m.piece];
@@ -91,8 +94,8 @@ export function analyzeMove(c, m) {
   const check = c.inCheck();
   const mate = c.isCheckmate();
   const stalemate = c.isStalemate();
-  const self = mate ? { risk: 0, by: null } : riskOn(c, m.to, moverVal, me);
-  const other = mate || stalemate ? { worst: 0, what: null } : worstHanging(c, me, m.to);
+  const self = mate ? { risk: 0, attacker: null } : riskOn(c, m.to, moverVal, me);
+  const other = !deep || mate || stalemate ? { worst: 0, what: null } : worstHanging(c, me, m.to);
   c.undo();
   const gain = captured - self.risk;
   const castles = m.flags.includes("k") ? "kingside" : m.flags.includes("q") ? "queenside" : null;
@@ -108,7 +111,7 @@ export function analyzeMove(c, m) {
   if (check && !mate) parts.push("gives check");
   if (self.risk > 0) {
     const mover = NAME[m.promotion || m.piece];
-    parts.push(self.by === 0 || self.by === null ? `hangs the ${mover} (${self.risk}): attacked, undefended` : self.risk === moverVal ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[byValue(self.by)]}, undefended` : `${mover} can be taken by a ${NAME[byValue(self.by)]} (loses ${self.risk})`);
+    parts.push(self.risk === moverVal ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[self.attacker]}, undefended` : `${mover} can be taken by a ${NAME[self.attacker]} (loses ${self.risk})`);
   }
   if (develops) parts.push(`develops a ${NAME[m.piece]}`);
   if (other.worst > 0) parts.push(`leaves the ${NAME[other.what.type]} on ${other.what.square} en prise (-${other.worst})`);
@@ -135,10 +138,13 @@ const C_other = (a) => (a.piece && a.from ? otherColor(a.color) : "b");
 
 // All legal moves annotated and ranked (best first). Threat annotations are computed for the top 16 only
 // (they cost a second board scan), then the ranking is refreshed. `c` is restored.
-export function analyzeAll(c) {
-  const out = c.moves({ verbose: true }).map((m) => Object.assign(analyzeMove(c, m), { color: m.color }));
+export function analyzeAll(c, deepCount = 16) {
+  const moves = c.moves({ verbose: true });
+  let out = moves.map((m) => Object.assign(analyzeMove(c, m, false), { color: m.color, m }));
   out.sort((a, b) => b.score - a.score);
-  for (const a of out.slice(0, 16)) addThreat(c, a);
+  // Second pass for the leading moves: what else they leave en prise, and what they threaten.
+  const lead = out.slice(0, deepCount).map((a) => addThreat(c, Object.assign(analyzeMove(c, a.m, true), { color: a.color })));
+  out = lead.concat(out.slice(deepCount).map(({ m, ...rest }) => rest));
   out.sort((a, b) => b.score - a.score);
   return out;
 }

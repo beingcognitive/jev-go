@@ -387,7 +387,7 @@ function render(){
   $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2;
   $("pass").hidden=!cfg.pass;
   const lastKey=S.moves.length? S.moves[S.moves.length-1].split(" ")[1] : null;
-  const lastIsJev = S.last && !S.busy && S.moves.length && S.moves[S.moves.length-1].startsWith(S.jev+" ");
+  const lastIsJev = S.last && !S.busy && S.moves.length && (cfg.chess ? (toMove()===S.human && S.moves[S.moves.length-1]===S.last.move) : S.moves[S.moves.length-1].startsWith(S.jev+" "));
   const pickP = (lastIsJev && S.last.answers) ? (S.last.answers.best_move.top.find(([k])=>k===S.last.move)||[])[1] : undefined;
   gridEl.classList.toggle("hidethoughts",thoughtsSel==="hide");
   const heat={}; let pmax=0; const candSet=new Set();
