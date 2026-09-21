@@ -8,14 +8,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer onload="window.gsiReady&&window.gsiReady()"></script>
+<script src="https://accounts.google.com/gsi/client" async defer onload="window.__gsiLoaded=true;window.gsiReady&&window.gsiReady()"></script>
 <style>
 :root{
   --paper:#eef0ea; --sheet:#f7f8f4; --ink:#1e211c; --ink-2:#5a6156; --rule:#d4d9cf;
   --felt:#2f5d3a; --felt-2:#25492e; --felt-soft:rgba(47,93,58,.14);
   --signal:#c8102e; --good:#2f5d3a; --bad:#b3261e; --warn:#9a6b00;
   --wood:#d9b06a; --wood-2:#c4974f; --line:#6e5027; --coord:#3b2c14;
-  --cell:min(5.8vw,40px);
+  --gutter:16px; --cell:40px;
   --serif:"Fraunces",Georgia,serif; --sans:"Atkinson Hyperlegible",system-ui,sans-serif;
 }
 @media (prefers-color-scheme:dark){
@@ -30,21 +30,37 @@
   --felt:#5f9c6a; --felt-2:#4c8556; --felt-soft:rgba(95,156,106,.2);
   --wood:#b98b4c; --wood-2:#a3773d; --line:#3d2a10; --coord:#2a1c08;
 }
+@media (max-width:480px){:root{--gutter:12px}}
 *{box-sizing:border-box}
 [hidden]{display:none !important}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--sans);padding:20px 16px 40px}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--sans);padding:0 var(--gutter) 40px}
 :focus-visible{outline:3px solid var(--felt);outline-offset:2px}
 a{color:var(--felt)}
-header{max-width:1120px;margin:0 auto 18px}
-h1{font:600 clamp(28px,4vw,40px)/1.1 var(--serif);font-variation-settings:"opsz" 72;letter-spacing:-.01em;margin:0 0 6px}
-.sub{color:var(--ink-2);font-size:15px;max-width:66ch;margin:0}
-main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr);gap:28px;align-items:start}
-@media (max-width:900px){main{grid-template-columns:1fr}}
+
+/* ----- top bar: brand, game, account ----- */
+.top{max-width:1120px;margin:0 auto 16px;display:flex;align-items:center;gap:10px 14px;padding:10px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.brand{font:600 20px/1 var(--serif);font-variation-settings:"opsz" 24;color:var(--ink);text-decoration:none;order:1}
+.who{order:2;margin-left:auto;display:flex;align-items:center;gap:8px;font-size:15px;min-height:40px}
+.who img{width:28px;height:28px;border-radius:50%}
+.top .seg{order:3;flex-basis:100%}
+@media (min-width:640px){.top .seg{order:2;flex-basis:auto;margin-left:6px}.who{order:3}}
+
+/* ----- two columns from 901px; the play column sticks so the board stays in view ----- */
+main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
+@media (min-width:901px){main{grid-template-columns:auto minmax(0,1fr);gap:36px}.play{position:sticky;top:12px}}
+.play,.more{min-width:0}
+h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"opsz" 72;letter-spacing:-.01em;margin:0 0 4px}
+.sub{color:var(--ink-2);font-size:15px;max-width:60ch;margin:0 0 12px}
+.statusrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px 12px;flex-wrap:wrap;margin:0 0 10px}
+.status{font:600 clamp(18px,2.2vw,22px)/1.25 var(--serif);font-variation-settings:"opsz" 36;min-height:26px}
+.chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;border:1px solid var(--rule);color:var(--ink-2);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.chip.live{color:var(--good);border-color:var(--good);background:var(--felt-soft)}
+.chip.warn{color:var(--warn);border-color:var(--warn)}
 
 /* ----- the board is the hero ----- */
-.boardwrap{background:linear-gradient(160deg,var(--wood),var(--wood-2));padding:12px 12px 14px 8px;border-radius:6px;display:inline-block;box-shadow:0 18px 40px -18px rgba(30,33,28,.55),inset 0 0 0 1px rgba(255,255,255,.18)}
-.grid{display:grid}
+.boardwrap{background:linear-gradient(160deg,var(--wood),var(--wood-2));padding:12px 12px 14px 8px;border-radius:6px;display:inline-block;max-width:100%;box-shadow:0 18px 40px -18px rgba(30,33,28,.55),inset 0 0 0 1px rgba(255,255,255,.18)}
+.grid{display:grid;touch-action:manipulation}
 .lbl{font-size:11px;color:var(--coord);display:flex;align-items:center;justify-content:center;user-select:none;font-variant-numeric:tabular-nums}
 .cell{position:relative;cursor:pointer}
 .cell::before{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:var(--line);transform:translateY(-.5px)}
@@ -67,6 +83,9 @@ main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .last.under{opacity:0;transition:opacity 1.2s ease .6s}
 .grid.faded .pick{opacity:0}
 .grid.faded .last.under{opacity:1}
+/* Hide: never draw Jev's marks */
+.grid.hidethoughts .heat,.grid.hidethoughts .cand,.grid.hidethoughts .truth,.grid.hidethoughts .pick,.grid.hidethoughts .pickc{display:none}
+.grid.hidethoughts .last.under{opacity:1}
 @keyframes pop{from{transform:scale(.55);opacity:.3}to{transform:scale(1);opacity:1}}
 .stone.new{animation:pop .22s ease-out}
 .cand{position:absolute;inset:30%;border-radius:50%;border:1.5px solid var(--felt);opacity:.5;z-index:1}
@@ -76,6 +95,7 @@ main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .ghost{position:absolute;inset:9%;border-radius:50%;z-index:2;pointer-events:none;opacity:.5;transform:scale(.94);box-shadow:0 1px 3px rgba(0,0,0,.35);animation:settle .16s ease-out,breathe 1.8s ease-in-out .16s infinite}
 .ghost.X{background:radial-gradient(circle at 34% 32%,#6a6a6a,#000)}
 .ghost.O{background:radial-gradient(circle at 34% 32%,#fff,#d0d0d0);border:1px solid #999}
+.ghost.aim{opacity:.85;animation:settle .16s ease-out,breathe 1.4s ease-in-out .16s infinite;box-shadow:0 0 0 2px var(--felt),0 1px 3px rgba(0,0,0,.35)}
 /* chess */
 .boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25)}
 .grid.chess .cell::before,.grid.chess .cell::after{display:none}
@@ -93,7 +113,7 @@ main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .promo button{font-size:28px;line-height:1;padding:4px 12px}
 .promo button.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000;background:#6f5236;border-color:#6f5236}
 .promo button.b{color:#111}
-.pgn{font-size:14px;color:var(--ink-2);margin-top:6px;max-height:3.4em;overflow:auto;font-variant-numeric:tabular-nums;line-height:1.5}
+.pgn{font-size:14px;color:var(--ink-2);margin-top:8px;max-height:3.4em;overflow:auto;font-variant-numeric:tabular-nums;line-height:1.5}
 .pgn b{color:var(--ink)}
 .piece.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000,0 1px 1px rgba(0,0,0,.6)}.piece.b{color:#111;text-shadow:0 0 1px #fff}
 .target{position:absolute;left:50%;top:50%;width:26%;height:26%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(0,0,0,.28);z-index:2;pointer-events:none}
@@ -111,39 +131,60 @@ main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:auto minm
 }
 @media (prefers-reduced-motion:reduce){.ghost,.stone.new,.captured,.grid.chess .cell.check.justchecked{animation:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick{transition:none}}
 
-/* ----- the scoresheet: one column, sections divided by rules ----- */
-.panel{background:transparent;border:0;border-top:1px solid var(--rule);border-radius:0;padding:18px 0 4px;margin:0}
-.panel:first-child{border-top:0;padding-top:0}
-.panel h2{font:600 19px/1.25 var(--serif);font-variation-settings:"opsz" 24;letter-spacing:0;text-transform:none;color:var(--ink);margin:0 0 10px}
-.statusrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
-.status{font:600 clamp(20px,2.4vw,26px)/1.2 var(--serif);font-variation-settings:"opsz" 36;min-height:28px}
-.scoreline{font-size:15px;color:var(--ink-2);margin-top:4px;font-variant-numeric:tabular-nums}
-.controls{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px 16px;align-items:start;margin-top:14px}
-.controls .lab{font-size:15px;color:var(--ink-2);padding-top:8px}
+/* ----- under the board: the one line and the one action the player needs ----- */
+.scoreline{font-size:14px;color:var(--ink-2);margin-top:8px;font-variant-numeric:tabular-nums}
+.actions{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-top:12px;min-height:40px}
+.aim{font-size:15px;color:var(--ink);flex:1 1 auto;min-width:0}
+.note{font-size:14px;color:var(--ink-2);margin-top:8px}
+.err{color:var(--bad);font-size:14px;margin-top:8px;white-space:pre-wrap}
+.result{margin-top:12px;padding:14px 16px;background:var(--sheet);border:1px solid var(--rule);border-left:4px solid var(--felt);border-radius:4px}
+.result .rtitle{font:600 22px/1.2 var(--serif);font-variation-settings:"opsz" 36;margin-bottom:4px}
+.result .rnote{font-size:15px;color:var(--ink-2)}
+.result .row{margin-top:12px}
+.claim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.claim input{font:inherit;font-size:16px;padding:8px 10px;border-radius:4px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);min-width:160px;flex:1 1 160px}
+.claim .fine{flex-basis:100%;font-size:13px;color:var(--ink-2)}
+.rsignin{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-top:10px;font-size:14px;color:var(--ink-2)}
+.jevcard{margin-top:14px;padding:12px 14px;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;font-size:15px}
+.jevcard .lead{font:600 17px/1.3 var(--serif);font-variation-settings:"opsz" 24}
+.jevcard .lead .p{color:var(--felt)}
+.jevcard .why{margin-top:2px}
+.jevcard .legend{margin-top:6px;font-size:13px;color:var(--ink-2)}
+.replaybar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.replaybar input[type=range]{flex:1;min-width:140px;accent-color:var(--felt)}
+.replaycap{font-size:15px;margin-top:8px}
+
+button,select{font:inherit;font-size:15px;min-height:40px;padding:7px 14px;border-radius:4px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);cursor:pointer}
+button.primary{background:var(--felt);color:#fff;border-color:var(--felt)}
+button.primary:hover{background:var(--felt-2)}
+button.small{min-height:32px;padding:3px 10px;font-size:13px}
+button:disabled{opacity:.5;cursor:default}
 .seg{display:inline-flex;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);flex-wrap:wrap;justify-self:start}
-.seg button{border:0;border-radius:0;background:transparent;padding:7px 14px;font-size:15px;color:var(--ink)}
+.seg button{border:0;border-radius:0;background:transparent;padding:7px 14px;font-size:15px;color:var(--ink);min-height:40px}
 .seg button+button{border-left:1px solid var(--rule)}
 .seg button.on{background:var(--felt);color:#fff}
 .seg button:disabled{opacity:.5}
-.actions{display:flex;flex-wrap:wrap;gap:8px}
-@media (max-width:480px){.controls{grid-template-columns:1fr}.controls .lab{padding-top:0}}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-button,select{font:inherit;font-size:15px;padding:7px 14px;border-radius:4px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);cursor:pointer}
-button.primary{background:var(--felt);color:#fff;border-color:var(--felt)}
-button.primary:hover{background:var(--felt-2)}
-button.small{padding:3px 8px;font-size:13px}
-button:disabled{opacity:.5;cursor:default}
-label.toggle{display:inline-flex;gap:6px;align-items:center;color:var(--ink-2);font-size:15px}
-.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;border:1px solid var(--rule);color:var(--ink-2)}
-.badge.mock{color:var(--warn);border-color:var(--warn)}
-.badge.live{color:var(--good);border-color:var(--good);background:var(--felt-soft)}
-.modehelp{font-size:14px;color:var(--ink-2);margin-top:6px;line-height:1.4;max-width:60ch}
-table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
-th,td{text-align:left;padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
-th{color:var(--ink-2);font-weight:400;position:sticky;top:0;background:var(--paper)}
-.ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--ink-2)}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:15px}
+.top .seg{display:flex}
+.top .seg button{flex:1 1 auto}
+a.link{color:var(--felt)}
+
+/* ----- the scoresheet: collapsible sections, all quiet until opened ----- */
+details.panel{border-top:1px solid var(--rule)}
+details.panel:last-child{border-bottom:1px solid var(--rule)}
+details.panel>summary{font:600 19px/1.25 var(--serif);font-variation-settings:"opsz" 24;padding:14px 0;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::after{content:"+";color:var(--ink-2);font:400 24px/1 var(--sans);flex:none}
+details.panel[open]>summary::after{content:"–"}
+details.panel>summary .cnt{font:400 14px var(--sans);color:var(--ink-2);margin-left:8px}
+details.panel .body{padding:0 0 18px}
+details.panel h3{font:600 16px/1.3 var(--serif);margin:14px 0 6px}
+details.panel h3:first-child{margin-top:0}
+.help{font-size:14px;color:var(--ink-2);margin-top:6px;line-height:1.4;max-width:60ch}
+.setting{margin-bottom:14px}
+.setting .lab{font-size:14px;color:var(--ink-2);margin-bottom:6px}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 14px;font-size:15px}
 .kv b{font-weight:400;color:var(--ink-2)}
+.kv span{min-width:0;overflow-wrap:anywhere}
 .opts{margin:8px 0 0;padding:0;list-style:none;font-size:14px}
 .opts li{padding:3px 0;border-bottom:1px dashed var(--rule)}
 .opts .k{font-weight:700;display:inline-block;min-width:40px}
@@ -152,164 +193,218 @@ th{color:var(--ink-2);font-weight:400;position:sticky;top:0;background:var(--pap
 .stat{padding:2px 0 6px}
 .stat .n{font:600 22px/1.1 var(--serif);font-variation-settings:"opsz" 36;font-variant-numeric:tabular-nums}
 .stat .l{font-size:13px;color:var(--ink-2)}
-.err{color:var(--bad);font-size:14px;margin-top:8px;white-space:pre-wrap}
-.tablewrap{overflow:auto;max-height:300px}
-details.io{border-bottom:1px solid var(--rule);background:transparent}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{color:var(--ink-2);font-weight:400}
+.ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--ink-2)}
+.tablewrap{overflow-x:auto;max-width:100%}
+@media (min-width:901px){.tablewrap{max-height:320px;overflow-y:auto}.tablewrap th{position:sticky;top:0;background:var(--paper)}}
+details.io{border-bottom:1px solid var(--rule)}
 details.io summary{cursor:pointer;padding:8px 0;font-size:14px}
 details.io .body{padding:0 0 12px}
-details.io h3{font-size:14px;margin:8px 0 4px;color:var(--ink-2);font-weight:400;display:flex;justify-content:space-between;align-items:center}
+details.io h3{font:400 14px/1.3 var(--sans);margin:8px 0 4px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center}
 .io.nocall{padding:8px 0;font-size:14px;border-bottom:1px solid var(--rule);color:var(--ink-2)}
-pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre}
-footer{max-width:1120px;margin:22px auto 0;color:var(--ink-2);font-size:13px;line-height:1.5;max-width:80ch}
-.claim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
-.who{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px;font-size:15px}
-.who img{width:28px;height:28px;border-radius:50%}
-.who .na{font-size:14px}
-#gsi{min-height:40px}
-.claim input{font:inherit;font-size:15px;padding:7px 10px;border-radius:4px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);min-width:200px}
+pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre;max-width:100%}
 .lb{width:100%;border-collapse:collapse;font-size:14px}
 .lb td,.lb th{padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap}
-.replaybar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
-.replaybar input[type=range]{flex:1;min-width:160px;accent-color:var(--felt)}
-.replaycap{font-size:15px;margin-top:8px}
-a.link{color:var(--felt)}
+.marks{font-size:14px;color:var(--ink-2);line-height:1.5}
+.marks li{margin:2px 0}
 </style>
 </head>
 <body>
-<header>
-  <h1 id="title">Can you beat Jev at Gomoku?</h1>
-  <div class="sub" id="sub"></div>
+<header class="top">
+  <a class="brand" href="./">Beat Jev</a>
+  <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
+    <button type="button" data-v="gomoku">Gomoku</button><button type="button" data-v="go">Go</button><button type="button" data-v="chess">Chess</button>
+  </div>
+  <div class="who" id="who">
+    <div id="gsi"></div>
+    <span id="whoin" hidden><img id="whopic" alt="" hidden><span id="whoname"></span> <button class="small" id="signout">Sign out</button></span>
+  </div>
 </header>
 <main>
-  <div><div class="boardwrap"><div class="grid" id="grid" aria-label="board"></div></div></div>
-  <div>
-    <div class="panel">
-      <div class="statusrow"><div class="status" id="status"></div><span class="badge" id="backend">backend: …</span></div>
-      <div class="scoreline" id="scoreline"></div>
-      <div class="pgn" id="pgn" hidden></div>
-      <div class="promo" id="promo" hidden></div>
-      <div class="controls">
-        <span class="lab">Game</span>
-        <div class="seg" id="gameseg" role="radiogroup" aria-label="Game">
-          <button type="button" data-v="gomoku">Gomoku 15×15</button><button type="button" data-v="go">Go 9×9</button><button type="button" data-v="chess">Chess</button>
-        </div>
-        <span class="lab">Mode</span>
-        <div>
+  <section class="play">
+    <h1 id="title">Can you beat Jev at Gomoku?</h1>
+    <p class="sub" id="sub"></p>
+    <div class="statusrow"><div class="status" id="status" aria-live="polite"></div><span class="chip" id="recchip" hidden></span></div>
+    <div class="boardwrap"><div class="grid" id="grid" aria-label="board"></div></div>
+    <div class="scoreline" id="scoreline"></div>
+    <div class="pgn" id="pgn" hidden></div>
+    <div class="promo" id="promo" hidden></div>
+    <div class="actions" id="actions">
+      <span class="aim" id="aim" hidden></span>
+      <button class="primary" id="place" hidden>Place</button>
+      <button id="pass" hidden>Pass</button>
+      <button id="newgame">New game</button>
+    </div>
+    <div class="err" id="err" role="alert"></div>
+    <div class="note" id="note"></div>
+    <div class="result" id="result" hidden>
+      <div class="rtitle" id="rtitle"></div>
+      <div class="rnote" id="rnote"></div>
+      <div class="claim" id="claim" hidden>
+        <input id="claimname" maxlength="24" placeholder="Your name" aria-label="Your name">
+        <button class="primary" id="claimbtn">Put my name on the board</button>
+        <span class="fine">Shown publicly in the hall of fame. You can do this once.</span>
+      </div>
+      <div class="rsignin" id="rsignin" hidden><div id="gsi2"></div><span>Your Google first name goes on the board.</span></div>
+      <div class="row"><button class="primary" id="again">Play again</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
+    </div>
+    <div class="replaybar" id="replaybar" hidden>
+      <button id="rpfirst" title="Start">⏮</button><button id="rpprev" title="Previous">◀</button>
+      <input type="range" id="rprange" min="0" max="0" value="0" aria-label="Move">
+      <button id="rpnext" title="Next">▶</button><button id="rplast" title="End">⏭</button>
+      <a class="link" id="rpexit" href="./">Leave the replay</a>
+    </div>
+    <div class="replaycap" id="replaycap"></div>
+    <div class="jevcard" id="jevcard"><span class="na">Jev has not moved yet.</span></div>
+  </section>
+
+  <section class="more">
+    <details class="panel" id="p-jev">
+      <summary>Jev's candidates<span class="cnt" id="candcnt"></span></summary>
+      <div class="body">
+        <div id="thought" class="kv"><span class="na">No move yet.</span></div>
+        <ul class="opts" id="opts"></ul>
+        <h3>What the marks mean</h3>
+        <ul class="marks">
+          <li>Green discs are Jev's five most likely moves, sized by probability. The number on its last stone is how likely it thought that move was.</li>
+          <li>Thin rings mark the candidates code offered in Player mode.</li>
+          <li>A dashed red ring marks a forced point Jev missed in Naked or Assisted mode.</li>
+          <li>"Via" says who decided: forced and only-move were played by code without a call, best is Jev's own pick, and the heuristic rank is where that pick sat in the code's ordering.</li>
+        </ul>
+      </div>
+    </details>
+    <details class="panel" id="p-moves">
+      <summary>Moves<span class="cnt" id="movecnt"></span></summary>
+      <div class="body">
+        <div class="stats" id="gamestats"></div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th id="h1">Win detect</th><th id="h2">Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
+          <tbody id="turns"></tbody>
+        </table></div>
+      </div>
+    </details>
+    <details class="panel" id="p-calls">
+      <summary>API calls<span class="cnt" id="callcnt"></span></summary>
+      <div class="body"><div id="iolog"><span class="na">No calls yet.</span></div></div>
+    </details>
+    <details class="panel" id="p-settings">
+      <summary>Settings</summary>
+      <div class="body">
+        <div class="setting"><div class="lab">Opponent mode</div>
           <div class="seg" id="modeseg" role="radiogroup" aria-label="Mode">
             <button type="button" data-v="player">Player</button><button type="button" data-v="assisted">Assisted</button><button type="button" data-v="naked">Naked</button>
           </div>
-          <div class="modehelp" id="modehelp"></div>
+          <div class="help" id="modehelp"></div>
         </div>
-        <span class="lab">Thoughts</span>
-        <div class="seg" id="thoughtseg" role="radiogroup" aria-label="Jev's thoughts on the board">
-          <button type="button" data-v="fade" title="Show Jev's probabilities, then fade them out when you start your move">Fade</button><button type="button" data-v="keep" title="Keep them on the board">Keep</button><button type="button" data-v="hide" title="Never draw them on the board">Hide</button>
+        <div class="setting"><div class="lab">Jev's thoughts on the board</div>
+          <div class="seg" id="thoughtseg" role="radiogroup" aria-label="Jev's thoughts on the board">
+            <button type="button" data-v="fade">Fade</button><button type="button" data-v="keep">Keep</button><button type="button" data-v="hide">Hide</button>
+          </div>
+          <div class="help" id="thoughthelp"></div>
         </div>
-        <span class="lab">Play</span>
-        <div class="actions">
-          <button class="primary" id="newgame">New game</button>
-          <button id="jevopens">New game, Jev opens</button>
-          <button id="pass" hidden>Pass</button>
+        <div class="setting"><div class="lab">Who opens the next game</div>
+          <div class="seg" id="openseg" role="radiogroup" aria-label="Who opens">
+            <button type="button" data-v="you">You</button><button type="button" data-v="jev">Jev</button>
+          </div>
+          <div class="help" id="openhelp"></div>
         </div>
+        <h3>How Jev plays this game</h3>
+        <div class="help" id="about"></div>
+        <div class="help" id="backendhelp"></div>
       </div>
-      <div class="who" id="who">
-        <div id="gsi"></div>
-        <span id="whoin" hidden><img id="whopic" alt="" hidden><span id="whoname"></span> <button class="small" id="signout">Sign out</button></span>
-        <span class="na" id="whohelp">Sign in with Google to keep your games and wins under your name, on any device.</span>
+    </details>
+    <details class="panel" id="p-you">
+      <summary>Your games</summary>
+      <div class="body">
+        <div class="help" id="whohelp">Sign in with Google (top right) to keep your games on any device. If you beat Jev, your Google first name goes on the public board.</div>
+        <div id="mine" hidden>
+          <div id="mystats" class="stats"></div>
+          <div class="tablewrap" id="mygames"></div>
+        </div>
+        <h3 id="alltimeTitle">On this device</h3>
+        <div class="stats" id="alltime"></div>
+        <div class="row"><button class="small" id="resetscore">Reset this device's tally</button></div>
       </div>
-      <div class="claim" id="claim" hidden>
-        <input id="claimname" maxlength="24" placeholder="Your name">
-        <button class="primary" id="claimbtn">Add my name</button>
-        <span class="na" id="claimmsg"></span>
+    </details>
+    <details class="panel" id="p-lb">
+      <summary>Hall of fame</summary>
+      <div class="body">
+        <div class="help" id="lbTitle"></div>
+        <div id="lbstats" class="stats"></div>
+        <div class="tablewrap" id="lb"><span class="na">Loading…</span></div>
       </div>
-      <div class="replaybar" id="replaybar" hidden>
-        <button id="rpfirst" title="Start">⏮</button><button id="rpprev" title="Previous">◀</button>
-        <input type="range" id="rprange" min="0" max="0" value="0">
-        <button id="rpnext" title="Next">▶</button><button id="rplast" title="End">⏭</button>
-        <a class="link" id="rpexit" href="./">Leave the replay</a>
-      </div>
-      <div class="replaycap" id="replaycap"></div>
-      <div class="err" id="err"></div>
-    </div>
-    <div class="panel">
-      <h2>What Jev just thought</h2>
-      <div id="thought" class="kv"><span class="na">No move yet.</span></div>
-      <ul class="opts" id="opts"></ul>
-    </div>
-    <div class="panel">
-      <h2>This game, move by move</h2>
-      <div class="stats" id="gamestats"></div>
-      <div class="tablewrap"><table>
-        <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th id="h1">Win detect</th><th id="h2">Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
-        <tbody id="turns"></tbody>
-      </table></div>
-    </div>
-    <div class="panel">
-      <h2>Every call to Jev, request and response</h2>
-      <div id="iolog"><span class="na">No calls yet.</span></div>
-    </div>
-    <div class="panel" id="mypanel" hidden>
-      <h2 id="myTitle">My games</h2>
-      <div id="mystats" class="stats"></div>
-      <div class="tablewrap" id="mygames"></div>
-    </div>
-    <div class="panel">
-      <h2 id="lbTitle">Hall of fame</h2>
-      <div id="lbstats" class="stats"></div>
-      <div class="tablewrap" id="lb"><span class="na">Loading…</span></div>
-    </div>
-    <div class="panel">
-      <h2 id="alltimeTitle">Your record on this browser</h2>
-      <div class="stats" id="alltime"></div>
-      <div class="row"><button id="resetscore">Clear this record</button></div>
-    </div>
-  </div>
+    </details>
+  </section>
 </main>
-<footer>The green discs are Jev's five most likely moves, sized by probability, and the number on its last stone is how likely it thought that move was. They fade when you start your move, or stay if you choose Keep. Thin rings mark the candidates code offered in Player mode. A dashed red ring marks a forced point Jev missed in Naked or Assisted mode. In the table, "via" says who decided: forced and only-move were played by code without a call, best is Jev's own pick, and "heur." is where that pick ranked in the code's ordering.</footer>
 <script>
 const CFG={
-  gomoku:{ title:"Can you beat Jev at Gomoku?", name:"Gomoku", sub:"15×15, five in a row. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
-    size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cell:"min(5.8vw,40px)", endpoint:"/api/move",
+  gomoku:{ title:"Can you beat Jev at Gomoku?", name:"Gomoku", sub:"Five in a row on a 15×15 board. Black moves first.",
+    about:"In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
+    size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cell:"min(calc((100vw - 74px) / 15), 40px)", endpoint:"/api/move",
     q1:"win_now", q2:"must_block", t1:"win", t2:"block", h1:"Win detect", h2:"Block detect", l1:"wins found", l2:"forced blocks found", pass:false, ls:"jev-gomoku-v2" },
-  go:{ title:"Can you beat Jev at Go?", name:"Go", sub:"9×9 Go, area scoring, komi 7.5, positional superko. Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Dead stones are not removed at the end, so capture them before passing.",
-    size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(9.4vw,62px)", endpoint:"/api/go",
+  go:{ title:"Can you beat Jev at Go?", name:"Go", sub:"9×9, area scoring, komi 7.5. Capture dead stones before you pass; two passes end the game.",
+    about:"Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Positional superko. Dead stones are not removed at the end, so capture them before passing.",
+    size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(calc((100vw - 74px) / 9), 62px)", endpoint:"/api/go",
     q1:"capture_now", q2:"must_save", t1:"capture", t2:"save", h1:"Capture detect", h2:"Save detect", l1:"captures found", l2:"saves found", pass:true, ls:"jev-go-v1" },
-  chess:{ title:"Can you beat Jev at chess?", name:"chess", sub:"Standard chess; rules from chess.js. Code annotates every legal move (captures, checks, what hangs, what it threatens, what the opponent could take back) and ranks them; Jev picks. Mate in one is played by code. Click a piece, then a square; pawns promote to a queen.",
-    size:8, cols:"abcdefgh", stars:[], cell:"min(10.4vw,66px)", endpoint:"/api/chess",
+  chess:{ title:"Can you beat Jev at chess?", name:"chess", sub:"Tap a piece, then a square. When a pawn reaches the last rank you choose what it becomes.",
+    about:"Code annotates every legal move (captures, checks, what hangs, what it threatens, what the opponent could take back) and ranks them; Jev picks. Mate in one is played by code. Rules from chess.js.",
+    size:8, cols:"abcdefgh", stars:[], cell:"min(calc((100vw - 74px) / 8), 66px)", endpoint:"/api/chess",
     q1:"mate_now", q2:"win_material", t1:"mate", t2:"material", h1:"Mate detect", h2:"Material detect", l1:"mates found", l2:"free captures found", pass:false, ls:"jev-chess-v1", chess:true },
 };
 const GLYPH={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
 const PVAL={p:1,n:3,b:3,r:5,q:9,k:0};
 const NAMEP={q:"queen",r:"rook",b:"bishop",n:"knight"};
-const LSMODE="jev-gomoku-mode", LSGAME="jev-game", LSSESSION="jev-session";
+const LSMODE="jev-gomoku-mode", LSGAME="jev-game", LSSESSION="jev-session", LSTHOUGHTS="jev-thoughts", LSOPEN="jev-opening";
 const GOOGLE_CLIENT_ID="473797382868-5b8l5j9k2c3pueepgqr9hhl8e3qrvjru.apps.googleusercontent.com";
 let me=null; // { session, user:{id,name,picture}, expiresAt }
 try{ const raw=localStorage.getItem(LSSESSION); if(raw){ const v=JSON.parse(raw); if(v&&v.session&&v.expiresAt>Date.now()) me=v; } }catch{}
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
-let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false;
-const LSTHOUGHTS="jev-thoughts";
+const hoverable=window.matchMedia&&matchMedia("(hover:hover)").matches;
+let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", openSel="you", fadeTimer=null, fadeArmed=false, lastPointer="mouse";
+let ioOpen=new Set(); // which API-call entries the reader opened; survives re-renders
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
 let recordBackend="mock"; try{ recordBackend=localStorage.getItem("jev-last-backend")||"mock"; }catch{}
 const lsKey=()=>cfg.ls+"::"+recordBackend;
 function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(lsKey())||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
 function saveScore(){ try{ localStorage.setItem(lsKey(),JSON.stringify(score)); }catch{} }
 function syncRecordBackend(be){ if(!be||be===recordBackend) return; recordBackend=be; try{ localStorage.setItem("jev-last-backend",be); }catch{} score=loadScore(); }
-const MODEHELP_KEYS=["player","assisted","naked"];
 const MODEHELP={
-  player:"Code plays forced moves and offers a ranked, annotated pool. Jev picks the move. This is the real player.",
-  assisted:"Every legal point is an option with exact facts computed by code. Jev answers all three questions; claims are verified before being played.",
-  naked:"Every legal point is an option with no description. Measures Jev alone."
+  player:"The real opponent. Code handles the forced tactics; Jev chooses among the moves worth considering.",
+  assisted:"An experiment. Jev sees every legal point with the facts about each one; its win and block claims are checked before they are played.",
+  naked:"An experiment. Jev sees every legal point and nothing else. The weakest, and the honest measurement."
 };
-try{ const m=localStorage.getItem(LSMODE); if(m&&MODEHELP_KEYS.includes(m)) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; const t=localStorage.getItem(LSTHOUGHTS); if(["fade","keep","hide"].includes(t)) thoughtsSel=t; }catch{}
-
+const THOUGHTHELP={ fade:"Jev's likely moves appear after its move and fade when you start yours.", keep:"They stay on the board until Jev's next move.", hide:"Never drawn on the board." };
+const OPENHELP={ you:"You play black (white in chess) and move first.", jev:"Jev moves first; you play white (black in chess)." };
+// Server errors, in the player's words. Anything unlisted is shown as it came.
+const HUMAN_ERR={
+  "bad state":"This game lost its link to the server. You can keep playing, but it will not be recorded.",
+  "not a claimable win":"This win already has a name, or it is not a recorded win.",
+  "name required":"Type a name first.", "not signed in":"Your sign-in has expired.",
+  "illegal human move":"That move is not allowed here.", "not the human's turn":"It is not your turn.", "occupied":"That point is taken.",
+};
+const friendly=(m)=>HUMAN_ERR[m]||(/^HTTP|^Failed to fetch|NetworkError/.test(m)?"The server did not answer. Check your connection and try again.":m);
+try{ const m=localStorage.getItem(LSMODE); if(MODEHELP[m]) modeSel=m; const g=localStorage.getItem(LSGAME); if(g&&CFG[g]) gameSel=g; const t=localStorage.getItem(LSTHOUGHTS); if(THOUGHTHELP[t]) thoughtsSel=t; const o=localStorage.getItem(LSOPEN); if(OPENHELP[o]) openSel=o; }catch{}
 
 function newGame(jev){
-  cfg=CFG[gameSel]; score=loadScore();
+  leaveReplay();
+  cfg=CFG[gameSel]; score=loadScore(); ioOpen=new Set();
   const empty=Array.from({length:cfg.size},()=>".".repeat(cfg.size));
-  S={ game:gameSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
-      legal:[], sel:null, inCheck:false, result:null, lastMove:null, token:null, gameId:null, verified:false, claimed:null, flip: !!cfg.chess && jev==="X" };
+  S={ game:gameSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, aim:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
+      legal:[], sel:null, inCheck:false, result:null, lastMove:null, token:null, gameId:null, verified:false, claimed:null, owner:null, flip: !!cfg.chess && jev==="X" };
   if(cfg.chess){ S.board=["rnbqkbnr","pppppppp","........","........","........","........","PPPPPPPP","RNBQKBNR"]; }
+  $("err").textContent=""; $("note").textContent=""; $("claimbtn").disabled=false; $("claimname").value="";
   buildGrid();
+}
+// One entry point for every "start over": honours the opening setting and never throws away an unnamed win silently.
+function startNew(){
+  if(S&&S.busy) return;
+  if(S&&S.status==="human_wins"&&S.verified&&S.backend==="native"&&!S.owner&&!S.claimed){ if(!confirm("Start a new game without putting your name on the board?")) return; }
+  const jev= openSel==="jev" ? "X" : "O";
+  newGame(jev); render();
+  if(cfg.chess||jev==="X") play(null);
 }
 function toMove(){ return S.moves.length%2===0?"X":"O"; }
 function keyOf(r,c){ return cfg.cols[c]+(cfg.size-r); }
@@ -328,7 +423,7 @@ function buildGrid(){
       const r=S.flip?7-dr:dr;
       const rl=document.createElement("div"); rl.className="lbl"; rl.textContent=8-r; gridEl.appendChild(rl);
       for(let dc=0;dc<8;dc++){
-        const c=S.flip?7-dc:dc, sq=cfg.cols[c]+(8-r);
+        const c=S.flip?7-dc:dc; const sq=cfg.cols[c]+(8-r);
         const cell=document.createElement("div");
         cell.className="cell "+(((r+c)%2===0)?"light":"dark"); cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=sq;
         cell.addEventListener("click",()=>onSquare(sq));
@@ -352,16 +447,21 @@ function buildGrid(){
       if(stars.has(r*cfg.size+c)){ const dot=document.createElement("span"); dot.className="dot"; cell.appendChild(dot); }
       cell.addEventListener("click",()=>onCell(r,c));
       cell.addEventListener("pointerenter",(e)=>{ if(e.pointerType==="touch") return; if(!S||S.busy||S.status!=="playing"||toMove()!==S.human||S.board[r][c]!==".") return; if(cell.querySelector(".ghost")) return; const g=document.createElement("span"); g.className="ghost "+S.human; cell.appendChild(g); });
-      cell.addEventListener("pointerleave",()=>{ for(const el of cell.querySelectorAll(".ghost")) el.remove(); });
+      cell.addEventListener("pointerleave",()=>{ for(const el of cell.querySelectorAll(".ghost:not(.aim)")) el.remove(); });
       gridEl.appendChild(cell);
     }
   }
 }
+gridEl.addEventListener("pointerdown",(e)=>{ lastPointer=e.pointerType||"mouse"; },{passive:true});
+// Stones: a mouse commits on click (the hover ghost was the preview). A finger aims first and commits on the
+// second tap or the Place button, because a 15×15 board on a phone is about 21px per point.
 function onCell(r,c){
   if(!S||S.busy||S.status!=="playing") return;
   if(toMove()!==S.human) return;
   if(S.board[r][c]!==".") return;
-  play(keyOf(r,c));
+  const k=keyOf(r,c);
+  if(lastPointer==="touch"&&S.aim!==k){ S.aim=k; if(thoughtsSel==="fade") gridEl.classList.add("faded"); render(); return; }
+  S.aim=null; play(k);
 }
 
 function ownPiece(ch){ return ch!=="." && ((S.human==="X")===(ch===ch.toUpperCase())); }
@@ -403,7 +503,7 @@ async function play(humanMove,localMove){
   const snapshot= cfg.chess ? {board:S.board,moves:S.moves,lastMove:S.lastMove,legal:S.legal,inCheck:S.inCheck} : null;
   if(cfg.chess&&localMove) applyLocalChess(localMove);
   const t0=performance.now();
-  S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
+  S.busy=true; S.pending=humanMove; S.aim=null; $("err").textContent=""; render();
   try{
     const body={moves:snapshot?snapshot.moves:S.moves,humanMove,jev:S.jev,mode:modeSel};
     if(me) body.session=me.session;
@@ -411,7 +511,7 @@ async function play(humanMove,localMove){
     if(S.token) body.state=S.token;
     let r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
-    if(!d.ok&&d.error==="bad state"&&body.state){ delete body.state; S.token=null; r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}); try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); } }
+    if(!d.ok&&d.error==="bad state"&&body.state){ delete body.state; S.token=null; $("note").textContent=friendly("bad state"); r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}); try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); } }
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
     if(cfg.chess&&d.jev){
       const wait=JEV_MIN_GAP-(performance.now()-t0); if(wait>0) await new Promise(res=>setTimeout(res,wait));
@@ -426,26 +526,26 @@ async function play(humanMove,localMove){
     }
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend; syncRecordBackend(d.backend);
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
-    S.token=d.state||null; S.gameId=d.gameId||S.gameId; S.verified=!!d.verified;
+    S.token=d.state||null; S.gameId=d.gameId||S.gameId; S.verified=!!d.verified; S.owner=d.owner||S.owner||null;
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
-    if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(); if(me&&S.verified) loadMyGames(); }
-  }catch(e){ $("err").textContent=e.message; if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } }
+    if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(true); if(me&&S.verified) loadMyGames(); }
+  }catch(e){ $("err").textContent=friendly(e.message); if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } }
   S.busy=false; S.pending=null; render();
 }
 
 let thoughtsShownAt=0;
 function scheduleFade(){
   clearTimeout(fadeTimer); fadeArmed=false; gridEl.classList.remove("faded"); thoughtsShownAt=performance.now();
-  if(thoughtsSel!=="fade") return;
+  if(thoughtsSel!=="fade"||!hoverable) return; // on touch the thoughts stay until you aim your next stone
   fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),5000);
 }
-gridEl.addEventListener("pointermove",()=>{
+gridEl.addEventListener("pointermove",(e)=>{
+  if(!hoverable||e.pointerType==="touch") return;
   if(thoughtsSel!=="fade"||fadeArmed||!S||!S.last||S.busy||gridEl.classList.contains("faded")) return;
   if(performance.now()-thoughtsShownAt<1500) return; // give the thoughts a moment before a stray mouse move dismisses them
   fadeArmed=true; clearTimeout(fadeTimer); fadeTimer=setTimeout(()=>gridEl.classList.add("faded"),900);
 },{passive:true});
-
 function addTurnToScore(t){
   score.moves++;
   if(t.answers){ score.calls++; score.latency+=t.latencyMs||0; if(t.usage&&typeof t.usage.input==="number"){ score.tokens+=t.usage.input; score.tokenCalls++; } }
@@ -480,20 +580,20 @@ const stat=(n,l)=>`<div class="stat"><div class="n">${n}</div><div class="l">${l
 const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String(o); } };
 
 function renderIO(){
+  const calls=S.turns.filter(t=>t.io).length; $("callcnt").textContent=calls?`(${calls})`:"";
   if(!S.turns.length){ $("iolog").innerHTML=`<span class="na">No calls yet.</span>`; return; }
-  const lastCall=S.turns.reduce((m,t,i)=>t.io?i:m,-1);
   $("iolog").innerHTML=S.turns.map((t,i)=>{
     if(!t.io) return `<div class="io nocall"><span>Move ${i+1}: ${esc(t.move)} via ${esc(t.source)}, decided by code, no call to Jev${t.note?" ("+esc(t.note)+")":""}</span></div>`;
-    const open= i===lastCall ? " open" : "";
     const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
-    return `<details class="io"${open}><summary>Move ${i+1}: ${esc(t.move)} via ${esc(t.source)}, ${t.latencyMs} ms, ${esc(tokens(t))}, request ${(req.length/1024).toFixed(1)} KB</summary>
+    return `<details class="io" data-i="${i}"${ioOpen.has(i)?" open":""}><summary>Move ${i+1}: ${esc(t.move)} via ${esc(t.source)}, ${t.latencyMs} ms, ${esc(tokens(t))}, request ${(req.length/1024).toFixed(1)} KB</summary>
       <div class="body">
         <h3>Request to ${esc(t.model||"Jev")} <button class="small" data-copy="req-${i}">Copy</button></h3><pre id="req-${i}">${esc(req)}</pre>
         <h3>Response <button class="small" data-copy="res-${i}">Copy</button></h3><pre id="res-${i}">${esc(res)}</pre>
       </div></details>`;
   }).join("");
+  for(const d of $("iolog").querySelectorAll("details.io")) d.addEventListener("toggle",()=>{ const i=+d.dataset.i; if(d.open) ioOpen.add(i); else ioOpen.delete(i); });
   for(const b of $("iolog").querySelectorAll("button[data-copy]")){
-    b.addEventListener("click",async()=>{ try{ await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent="copied"; setTimeout(()=>b.textContent="copy",1200); }catch{} });
+    b.addEventListener("click",async()=>{ try{ await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent="Copied"; setTimeout(()=>b.textContent="Copy",1200); }catch{} });
   }
 }
 
@@ -515,7 +615,7 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
     cell.classList.toggle("check",kingSq===sq);
     cell.classList.toggle("canpick",!locked&&!S.sel&&ownPiece(ch)&&S.legal.some(m=>m.from===sq));
     for(const el of cell.querySelectorAll(".piece,.target,.heat,.cand,.truth,.pickc,.ghostpiece,.captured")) el.remove();
-    if(anim&&anim.captured&&anim.captured.sq===sq){ const cp=document.createElement("span"); cp.className="captured "+(anim.captured.piece===anim.captured.piece.toUpperCase()?"piece w":"piece b"); cp.classList.remove("piece"); cp.classList.add(anim.captured.piece===anim.captured.piece.toUpperCase()?"w":"b"); cp.style.color=anim.captured.piece===anim.captured.piece.toUpperCase()?"#fff":"#111"; cp.style.textShadow=anim.captured.piece===anim.captured.piece.toUpperCase()?"0 0 2px #000":"0 0 1px #fff"; cp.textContent=GLYPH[anim.captured.piece]||"?"; cell.appendChild(cp); }
+    if(anim&&anim.captured&&anim.captured.sq===sq){ const cp=document.createElement("span"); const white=anim.captured.piece===anim.captured.piece.toUpperCase(); cp.className="captured "+(white?"w":"b"); cp.style.color=white?"#fff":"#111"; cp.style.textShadow=white?"0 0 2px #000":"0 0 1px #fff"; cp.textContent=GLYPH[anim.captured.piece]||"?"; cell.appendChild(cp); }
     if(kingSq===sq&&S.checkPulse){ cell.classList.remove("justchecked"); void cell.offsetWidth; cell.classList.add("justchecked"); S.checkPulse=false; } else if(kingSq!==sq) cell.classList.remove("justchecked");
     if(ch!=="."){
       const pc=document.createElement("span"); pc.className="piece "+(ch===ch.toUpperCase()?"w":"b"); pc.textContent=GLYPH[ch]||"?"; cell.appendChild(pc);
@@ -533,18 +633,65 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
     if(heatSq[sq]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.35+0.55*heatSq[sq]/(pmax||1)).toFixed(2); h.style.transitionDelay=(heatRankSq[sq]||0)+"ms"; h.textContent=Math.round(heatSq[sq]*100)+"%"; cell.appendChild(h); }
     else if(candSq.has(sq)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
     if(truthSq.has(sq)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
-    if(pickSq===sq){ const pk=document.createElement("span"); pk.className="pickc"; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk); }
+    if(pickSq===sq){ const pk=document.createElement("span"); pk.className="pickc"; pk.textContent=Math.round(pickP*100)+"%"; cell.appendChild(pk); }
   }
 }
 
-function render(){
-  $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2;
-  $("pass").hidden=!cfg.pass;
+// The player-facing summary of Jev's last move: what it played, how sure it was, and the one-line reason
+// the candidate carried. Forced moves say so; the researcher's detail lives in "Jev's candidates".
+function renderJevCard(pickP){
+  const t=S.last, card=$("jevcard");
+  if(!t){ card.innerHTML=`<span class="na">${S.status==="replay"?"Human to move.":"Jev has not moved yet."}</span>`; return; }
+  const cand=(t.candidates||[]).find(c=>c.key===t.move);
+  const why=cand?cand.desc:(t.note||"");
+  const shown=t.shown||t.move, p= pickP!==undefined ? pickP : t.pickShown; // replays carry the move and its probability separately
+  let lead;
+  if(!t.answers) lead=`Code played <b>${esc(shown)}</b> for Jev: a forced move, no call made.`;
+  else if(p!=null) lead=`Jev played <b>${esc(shown)}</b>, giving it <span class="p">${Math.round(p*100)}%</span>.`;
+  else lead=`Jev played <b>${esc(shown)}</b>.`;
+  const showLegend=t.answers&&thoughtsSel!=="hide"&&S.status!=="replay";
+  card.innerHTML=`<div class="lead">${lead}</div>${why?`<div class="why">${esc(why)}</div>`:""}${showLegend?`<div class="legend">Green discs are its other likely moves, sized by probability.</div>`:""}`;
+}
+
+function renderResult(){
+  const box=$("result"); const over=S.status!=="playing"&&S.status!=="replay";
+  box.hidden=!over; $("actions").hidden=over||S.status==="replay";
+  if(!over) return;
+  const won=S.status==="human_wins";
+  let title;
+  if(won) title= cfg.chess ? (S.result==="checkmate"?"Checkmate. You win.":"You win.") : cfg.pass ? "You win." : "You win. Five in a row.";
+  else if(S.status==="jev_wins") title= cfg.chess ? (S.result==="checkmate"?"Checkmate. Jev wins.":"Jev wins.") : "Jev wins.";
+  else title= cfg.chess ? `Draw: ${S.result||"draw"}.` : "Draw. Board full.";
+  $("rtitle").textContent=title;
+  let note="", claim=false, signin=false, replay=false;
+  if(S.backend==="mock") note="A practice game against the stand-in opponent, so it is not recorded.";
+  else if(!S.verified) note="This game lost its link to the server, so it is not recorded.";
+  else if(won){
+    replay=true;
+    if(S.claimed) note=`On the board as ${S.claimed}.`;
+    else if(S.owner) note=`On the board as ${S.owner}.`;
+    else { note="You beat the real Jev. Put a name on the hall of fame, or sign in to use your Google name."; claim=true; signin=!me; }
+  } else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : (me ? "Saved." : "Sign in to keep this game under your name."); signin=!me; }
+  $("rnote").textContent=note; $("claim").hidden=!claim; $("rsignin").hidden=!signin;
+  const a=$("rreplay"); a.hidden=!(replay&&S.gameId); if(S.gameId) a.href=`?replay=${encodeURIComponent(S.gameId)}`;
+  $("share").hidden=!(replay&&S.gameId);
+}
+function shareText(){
+  const n=S.moves.length, url=new URL(`?replay=${encodeURIComponent(S.gameId)}`,location.href).href;
+  const what= S.status==="human_wins" ? `I beat Jev at ${cfg.name} in ${n} moves.` : S.status==="jev_wins" ? `Jev beat me at ${cfg.name} in ${n} moves.` : `I drew with Jev at ${cfg.name} in ${n} moves.`;
+  return { text:`${what} Can you? ${url}`, url };
+}
+$("share").addEventListener("click",async()=>{
+  const s=shareText(); const b=$("share");
+  try{ if(navigator.share) await navigator.share({ text:s.text, url:s.url }); else { await navigator.clipboard.writeText(s.text); b.textContent="Copied"; setTimeout(()=>b.textContent="Share",1400); } }catch{}
+});
+
+function render(light){
+  $("title").textContent=cfg.title; $("sub").textContent=cfg.sub; $("h1").textContent=cfg.h1; $("h2").textContent=cfg.h2; $("about").textContent=cfg.about;
   const lastKey=S.moves.length? S.moves[S.moves.length-1].split(" ")[1] : null;
   const lastIsJev = S.last && !S.busy && S.moves.length && (cfg.chess ? (toMove()===S.human && S.moves[S.moves.length-1]===S.last.move) : S.moves[S.moves.length-1].startsWith(S.jev+" "));
   const pickP = (lastIsJev && S.last.answers) ? (S.last.answers.best_move.top.find(([k])=>k===S.last.move)||[])[1] : undefined;
   gridEl.classList.toggle("hidethoughts",thoughtsSel==="hide");
-  gridEl.classList.toggle("human-X",S.human==="X"); gridEl.classList.toggle("human-O",S.human==="O");
   const heat={}, heatRank={}; let pmax=0; const candSet=new Set();
   if(S.last&&S.last.answers){ const top=S.last.answers.best_move.top; top.forEach(([k,p],i)=>{ if(k==="pass") return; heat[k]=p; pmax=Math.max(pmax,p); heatRank[k]=(top.length-1-i)*160; }); }
   if(S.last&&S.last.candidates) for(const c of S.last.candidates) candSet.add(c.key);
@@ -564,46 +711,53 @@ function render(){
       if(k===lastKey){
         if(pickP!==undefined && ch===S.jev && thoughtsSel!=="hide"){
           const l=document.createElement("span"); l.className="last under"; cell.appendChild(l);
-          const pk=document.createElement("span"); pk.className="pick "+ch; pk.textContent=Math.round(pickP*100)+"%"; pk.title="Jev's probability for the move it played"; cell.appendChild(pk);
+          const pk=document.createElement("span"); pk.className="pick "+ch; pk.textContent=Math.round(pickP*100)+"%"; cell.appendChild(pk);
         } else { const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
       }
-    } else if(S.pending===k&&!cfg.chess){
+    } else if(S.pending===k){
       const st=document.createElement("span"); st.className="stone pending "+S.human; cell.appendChild(st);
     } else {
+      if(S.aim===k){ const g=document.createElement("span"); g.className="ghost aim "+S.human; cell.appendChild(g); }
       if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; const f=heat[k]/(pmax||1); h.style.opacity=(0.25+0.6*f).toFixed(2); h.style.inset=(30-22*f).toFixed(0)+"%"; h.style.transitionDelay=(heatRank[k]||0)+"ms"; if(heat[k]>=0.05) h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
       else if(candSet.has(k)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
       if(truthRing.has(k)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
     }
   }
-  const you=S.human==="X"?"X (black)":"O (white)";
+  // status line
+  const you=S.human==="X"?"black":"white";
   let msg;
-  if(S.busy) msg= cfg.chess&&S.lastMove&&S.moves.length%2!==(S.human==="X"?0:1) ? `You played ${S.lastMove.san}. Jev is thinking…` : "Jev is thinking…";
-  else if(S.status==="human_wins") msg= cfg.chess ? `${S.result==="checkmate"?"Checkmate.":"Game over."} You win.` : S.game==="go" ? "Game over. You win." : "You win. Five in a row.";
-  else if(S.status==="jev_wins") msg= cfg.chess ? `${S.result==="checkmate"?"Checkmate.":"Game over."} Jev wins.` : S.game==="go" ? "Game over. Jev wins." : "Jev wins.";
-  else if(S.status==="draw") msg= cfg.chess ? `Draw: ${S.result||"draw"}.` : "Draw. Board full.";
+  if(S.status==="replay") msg=`Replay: ${R&&R.game.result==="human_wins"?"a human beat Jev":R&&R.game.result==="jev_wins"?"Jev won":R&&R.game.result==="draw"?"a draw":"an unfinished game"}.`;
+  else if(S.busy) msg= cfg.chess&&S.lastMove&&S.moves.length%2!==(S.human==="X"?0:1) ? `You played ${S.lastMove.san}. Jev is thinking…` : "Jev is thinking…";
+  else if(S.status!=="playing") msg= S.status==="human_wins" ? "Game over. You win." : S.status==="jev_wins" ? "Game over. Jev wins." : "Game over. Draw.";
   else if(cfg.chess) msg=`Your move. You are ${S.human==="X"?"White":"Black"}.`+(S.inCheck?" Check!":"")+(S.promo?" Choose a piece to promote to.":S.sel?` ${S.sel} selected.`:"");
   else msg=`Your move. You are ${you}.`+(lastKey==="pass"?" Jev passed.":"");
-  if(S.status==="replay") msg=`Replay · ${R&&R.game.result==="human_wins"?"a human beat Jev":R&&R.game.result==="jev_wins"?"Jev won":"draw"}`;
   $("status").textContent=msg;
-  renderClaim();
+  // the record chip: does this game count?
+  const chip=$("recchip"); const be=S.backend;
+  if(S.status==="replay"||!be){ chip.hidden=true; }
+  else { chip.hidden=false; if(be==="mock"){ chip.textContent="Practice opponent"; chip.className="chip warn"; } else if(S.verified){ chip.textContent=S.owner?`Recorded as ${S.owner}`:"Recorded"; chip.className="chip live"; } else { chip.textContent="Not recorded"; chip.className="chip"; } }
+  $("backendhelp").textContent= be==="native" ? "Opponent: Jev, live. The server calls TypeSafe's Jev API for every move." : be==="mock" ? "Opponent: a practice stand-in. The server has no Jev key, so a heuristic plays instead and nothing counts for the hall of fame." : "The opponent resolves on the first move.";
+  // aim + actions
+  const aiming=!!S.aim&&S.status==="playing"&&!S.busy;
+  $("aim").hidden=!aiming; $("place").hidden=!aiming; if(aiming){ $("aim").textContent=`${S.aim}. Tap again to place, or tap another point.`; $("place").textContent=`Place ${S.aim}`; }
+  $("pass").hidden=!cfg.pass||S.status!=="playing"; $("pass").disabled=locked;
+  $("newgame").disabled=S.busy; $("again").disabled=S.busy;
+  renderResult();
   let sl="";
   if(cfg.chess){ let w=0,b=0; for(const row of S.board) for(const ch of row){ if(ch===".") continue; const v=PVAL[ch.toLowerCase()]||0; if(ch===ch.toUpperCase()) w+=v; else b+=v; } sl=`Material: White ${w}, Black ${b}`; }
   const pgnEl=$("pgn"); pgnEl.hidden=!cfg.chess;
   if(cfg.chess){ const parts=[]; for(let i=0;i<S.moves.length;i++){ const n=Math.floor(i/2)+1; const t= i===S.moves.length-1 ? `<b>${esc(S.moves[i])}</b>` : esc(S.moves[i]); parts.push(i%2===0?`${n}. ${t}`:t); } pgnEl.innerHTML=parts.length?parts.join(" "):`<span class="na">No moves yet.</span>`; pgnEl.scrollTop=pgnEl.scrollHeight; }
   const promoEl=$("promo"); promoEl.hidden=!(cfg.chess&&S.promo);
-  if(cfg.chess&&S.promo){ const w=S.human==="X"; promoEl.innerHTML=`<span>Promote the pawn to</span>`+["q","r","b","n"].map(pz=>{ const m=S.promo.find(x=>x.promotion===pz); return m?`<button type="button" class="${w?"w":"b"}" data-san="${esc(m.san)}" title="${NAMEP[pz]}">${GLYPH[w?pz.toUpperCase():pz]}</button>`:""; }).join("");
+  if(cfg.chess&&S.promo){ const w=S.human==="X"; promoEl.innerHTML=`<span>Promote the pawn to</span>`+["q","r","b","n"].map(pz=>{ const m=S.promo.find(x=>x.promotion===pz); return m?`<button type="button" class="${w?"w":"b"}" data-san="${esc(m.san)}" title="${NAMEP[pz]}" aria-label="${NAMEP[pz]}">${GLYPH[w?pz.toUpperCase():pz]}</button>`:""; }).join("");
     for(const b of promoEl.querySelectorAll("button")) b.addEventListener("click",()=>{ const m=S.promo.find(x=>x.san===b.dataset.san); S.promo=null; S.sel=null; if(m) play(m.san,m); }); }
-  if(S.game==="go"){ sl=`Captures: X ${S.captures.X} · O ${S.captures.O}`; if(S.score){ const s=S.score; sl+=` · Black ${s.black} vs White ${s.white} (incl. komi ${s.komi}) → ${s.winner==="X"?"Black":"White"} by ${s.margin}`; } }
+  if(S.game==="go"){ sl=`Captures: black ${S.captures.X}, white ${S.captures.O}`; if(S.score){ const s=S.score; sl+=`. Black ${s.black} vs white ${s.white} with komi ${s.komi}: ${s.winner==="X"?"black":"white"} by ${s.margin}.`; } }
   $("scoreline").textContent=sl;
-  const be=S.backend; const badge=$("backend");
-  const beLabel=(b)=> b==="native" ? "opponent: Jev, live" : b==="mock" ? "opponent: mock, no key" : "opponent: …";
-  badge.textContent=beLabel(be); badge.className="badge "+(be==="mock"?"mock":be?"live":"");
-  badge.title= be==="native" ? "The server is calling TypeSafe's Jev API for every move." : be==="mock" ? "No TYPESAFE_API_KEY on the server: a heuristic stand-in plays instead of Jev. Nothing is recorded." : "Resolves on the first move.";
-  $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy; $("pass").disabled=locked;
-  for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
+  for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy||!!R; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
   for(const b of $("modeseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===modeSel); b.setAttribute("aria-checked",b.dataset.v===modeSel); }
   for(const b of $("thoughtseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===thoughtsSel); b.setAttribute("aria-checked",b.dataset.v===thoughtsSel); }
-  $("modehelp").textContent=MODEHELP[modeSel]||"";
+  for(const b of $("openseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===openSel); b.setAttribute("aria-checked",b.dataset.v===openSel); }
+  $("modehelp").textContent=MODEHELP[modeSel]||""; $("thoughthelp").textContent=THOUGHTHELP[thoughtsSel]||""; $("openhelp").textContent=OPENHELP[openSel]||"";
+  renderJevCard(pickP);
 
   const t=S.last;
   if(t){
@@ -621,8 +775,12 @@ function render(){
     if(t.candidates&&t.candidates.length){
       const probs=Object.fromEntries((t.answers?t.answers.best_move.top:[]));
       $("opts").innerHTML=t.candidates.map(c=>`<li><span class="k">${esc(c.key)}</span> <span class="p">${probs[c.key]!==undefined?Math.round(probs[c.key]*100)+"%":""}</span> <span class="na">${c.rank?"#"+c.rank:""}</span> ${esc(c.desc)}</li>`).join("");
-    } else $("opts").innerHTML="";
-  } else { $("thought").innerHTML=`<span class="na">No move yet.</span>`; $("opts").innerHTML=""; }
+      $("candcnt").textContent=`(${t.candidates.length})`;
+    } else { $("opts").innerHTML=""; $("candcnt").textContent=""; }
+  } else { $("thought").innerHTML=`<span class="na">No move yet.</span>`; $("opts").innerHTML=""; $("candcnt").textContent=""; }
+
+  if(lastKey) S._animated=lastKey;
+  if(light) return; // replay scrubbing: the board and the cards are enough
 
   const g={moves:S.turns.length,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
   for(const x of S.turns){
@@ -635,15 +793,15 @@ function render(){
       if(x.verdict[cfg.t1]==="false") g.falseClaims++; if(x.verdict[cfg.t2]==="false") g.falseClaims++;
     }
   }
+  $("movecnt").textContent=g.moves?`(${g.moves} by Jev)`:"";
   $("gamestats").innerHTML=
     stat(g.moves,"Jev moves")+stat(g.forced,"played by code")+stat(g.calls,"Jev calls")+stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
     stat(`${g.q1Found}/${g.q1Opp}`,cfg.l1)+stat(`${g.q2Found}/${g.q2Need}`,cfg.l2)+
     stat(g.calls?Math.round(g.latency/g.calls):"–","avg ms per call")+stat(g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","avg input tokens");
   $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t1],((x.truth&&x.truth[cfg.t1])||[]).length)}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t2],((x.truth&&x.truth[cfg.t2])||[]).length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${esc(x.usage&&x.usage.input!=null?x.usage.input:"–")}</td></tr>`).join("");
-  if(lastKey) S._animated=lastKey;
   renderIO();
 
-  $("alltimeTitle").textContent=`Your record on this browser, ${recordBackend==="native"?"against Jev":"against the mock"}`;
+  $("alltimeTitle").textContent=`On this device, ${recordBackend==="native"?"against Jev":"against the practice opponent"}`;
   $("alltime").innerHTML=
     stat(score.games,"games")+stat(`${score.jev}–${score.human}–${score.draw}`,"Jev, you, draws")+stat(pct(score.jev,score.games),"Jev win rate")+
     stat(pct(score.agree,score.ranked),`heuristic #1 (${score.ranked})`)+
@@ -653,40 +811,58 @@ function render(){
 
 // ---- sign in with Google ----
 function renderWho(){
-  $("whoin").hidden=!me; $("gsi").hidden=!!me; $("whohelp").hidden=!!me;
+  $("whoin").hidden=!me; $("gsi").hidden=!!me; $("whohelp").hidden=!!me; $("mine").hidden=!me;
   if(me){ $("whoname").textContent=me.user.name; const pic=$("whopic"); if(me.user.picture){ pic.src=me.user.picture; pic.hidden=false; } else pic.hidden=true; }
+}
+function renderGsi(){
+  if(!window.google||!google.accounts) return;
+  for(const [id,opts] of [["gsi",{size:"medium",text:"signin"}],["gsi2",{size:"large",text:"signin_with",width:"260"}]]){
+    const el=$(id); el.innerHTML="";
+    if(!me) google.accounts.id.renderButton(el,{ theme:"outline", shape:"pill", logo_alignment:"left", locale:"en_US", ...opts });
+  }
 }
 window.gsiReady=function(){
   if(!window.google||!google.accounts) return;
   google.accounts.id.initialize({ client_id:GOOGLE_CLIENT_ID, callback:onGoogleCredential, auto_select:false, ux_mode:"popup" });
-  if(!me) google.accounts.id.renderButton($("gsi"),{ theme:"outline", size:"medium", shape:"pill", text:"signin_with", logo_alignment:"left" });
+  renderGsi();
 };
+function signedOut(msg){
+  me=null; try{ localStorage.removeItem(LSSESSION); }catch{}
+  renderWho(); renderGsi(); if(msg) $("note").textContent=msg;
+}
 async function onGoogleCredential(resp){
   try{
-    const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({credential:resp.credential})});
+    const game=S; // the game on screen when sign-in started; a slow response must not brand a later game
+    const body={credential:resp.credential}; if(game&&game.token&&game.verified) body.state=game.token; // attach it, even after its last move
+    const r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     const d=await r.json(); if(!d.ok) throw new Error(d.error||"sign-in failed");
     me={session:d.session,user:d.user,expiresAt:d.expiresAt}; try{ localStorage.setItem(LSSESSION,JSON.stringify(me)); }catch{}
-    renderWho(); loadMyGames(); render();
-  }catch(e){ $("err").textContent="Sign-in failed: "+e.message; }
+    if(game&&S===game){ if(d.attached) game.owner=(d.game&&d.game.name)||me.user.name; else if(game.verified&&game.status==="playing") game.owner=game.owner||me.user.name; }
+    $("note").textContent=""; renderWho(); renderGsi(); loadMyGames(); render();
+  }catch(e){ $("err").textContent="Sign-in failed: "+friendly(e.message); }
 }
-$("signout").addEventListener("click",()=>{ me=null; try{ localStorage.removeItem(LSSESSION); }catch{} if(window.google&&google.accounts) google.accounts.id.disableAutoSelect(); renderWho(); $("mypanel").hidden=true; if(window.gsiReady) window.gsiReady(); render(); });
+$("signout").addEventListener("click",()=>{
+  const keeps= S&&S.status==="playing"&&S.owner ? `This game stays under ${S.owner}; sign-out applies to your next game.` : "";
+  signedOut(keeps); if(window.google&&google.accounts) google.accounts.id.disableAutoSelect(); render();
+});
 async function loadMyGames(){
-  if(!me){ $("mypanel").hidden=true; return; }
+  if(!me){ $("mine").hidden=true; return; }
   try{
     const r=await fetch("/api/me",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({session:me.session})});
-    const d=await r.json(); if(!d.ok){ if(r.status===401){ me=null; try{ localStorage.removeItem(LSSESSION); }catch{} renderWho(); } throw new Error(d.error); }
-    $("mypanel").hidden=false; $("myTitle").textContent=`My games, ${esc(d.user.name)}`;
+    const d=await r.json();
+    if(!d.ok){ if(r.status===401){ signedOut("Your sign-in expired. Sign in again to keep your games."); render(); return; } throw new Error(d.error); }
+    $("mine").hidden=false;
     const st=d.stats; $("mystats").innerHTML=stat(st.games,"finished")+stat(st.wins,"won")+stat(st.losses,"lost")+stat(st.draws,"drawn");
     const label={gomoku:"Gomoku",go:"Go",chess:"chess"};
     $("mygames").innerHTML= d.games.length ? `<table class="lb"><thead><tr><th>When</th><th>Game</th><th>Mode</th><th>Result</th><th>Plies</th><th></th></tr></thead><tbody>`+
-      d.games.map(g=>`<tr><td>${g.created_at?new Date(g.created_at).toLocaleDateString():""}</td><td>${label[g.game]||esc(g.game)}</td><td>${esc(g.mode)}</td><td>${g.result==="human_wins"?"you won":g.result==="jev_wins"?"Jev won":g.result==="draw"?"draw":"in progress"}</td><td>${g.plies}</td><td><a href="?replay=${esc(g.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`
-      : `<span class="na">No games yet under this account. Play one and it will appear here.</span>`;
-  }catch(e){ $("mygames").innerHTML=`<span class="na">Could not load your games (${esc(e.message)}).</span>`; }
+      d.games.map(g=>`<tr><td>${g.created_at?new Date(g.created_at).toLocaleDateString():""}</td><td>${label[g.game]||esc(g.game)}</td><td>${esc(g.mode)}</td><td>${g.result==="human_wins"?"you won":g.result==="jev_wins"?"Jev won":g.result==="draw"?"draw":"unfinished"}</td><td>${g.plies}</td><td><a href="?replay=${esc(g.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`
+      : `<span class="na">No games yet under this account. Finish one and it appears here.</span>`;
+  }catch(e){ $("mine").hidden=false; $("mygames").innerHTML=`<span class="na">Could not load your games (${esc(friendly(e.message))}).</span>`; }
 }
 
 // ---- hall of fame ----
 async function loadLeaderboard(fresh){
-  $("lbTitle").textContent=`Hall of fame: people who beat Jev at ${cfg.name}`;
+  $("lbTitle").textContent=`People who beat Jev at ${cfg.name}, fewest moves first.`;
   try{
     const r=await fetch(`/api/leaderboard?game=${gameSel}${fresh?"&t="+Date.now():""}`); const d=await r.json();
     if(!d.ok) throw new Error(d.error);
@@ -695,22 +871,13 @@ async function loadLeaderboard(fresh){
     if(!d.wins.length){ $("lb").innerHTML=`<span class="na">Nobody has beaten Jev at this game yet${d.durable?"":" (records on this server are in memory only)"}.</span>`; return; }
     $("lb").innerHTML=`<table class="lb"><thead><tr><th>#</th><th>Name</th><th>Plies</th><th>Mode</th><th>Jev</th><th>When</th><th></th></tr></thead><tbody>`+
       d.wins.map((w,i)=>`<tr><td>${i+1}</td><td>${esc(w.name)}</td><td>${w.plies}</td><td>${esc(w.mode)}</td><td>${esc(w.model||"")}</td><td>${w.ended_at?new Date(w.ended_at).toLocaleDateString():""}</td><td><a href="?replay=${esc(w.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`;
-  }catch(e){ $("lb").innerHTML=`<span class="na">Hall of fame unavailable (${esc(e.message)}).</span>`; }
-}
-function renderClaim(){
-  const box=$("claim");
-  const won=S.status==="human_wins";
-  if(me&&won&&S.verified&&!S.claimed){ box.hidden=false; $("claimname").hidden=true; $("claimbtn").hidden=true; $("claimmsg").innerHTML= S.backend==="native" ? `Recorded under <b>${esc(me.user.name)}</b> · <a class="link" href="?replay=${esc(S.gameId)}">replay link</a>` : "You beat the mock, not Jev, so this one is not in the hall of fame."; return; }
-  if(!won||!S.verified||S.claimed){ box.hidden=!(won&&S.claimed); if(won&&S.claimed){ $("claimname").hidden=true; $("claimbtn").hidden=true; $("claimmsg").innerHTML=`Recorded as <b>${esc(S.claimed)}</b> · <a class="link" href="?replay=${esc(S.gameId)}">replay link</a>`; } return; }
-  box.hidden=false; $("claimname").hidden=false; $("claimbtn").hidden=false;
-  $("claimmsg").textContent= S.backend==="native" ? "You beat the real Jev. Add your name to the hall of fame." : "You beat the mock, not Jev, so this one is not recorded.";
-  $("claimbtn").disabled= S.backend!=="native";
+  }catch(e){ $("lb").innerHTML=`<span class="na">Hall of fame unavailable (${esc(friendly(e.message))}).</span>`; }
 }
 $("claimbtn").addEventListener("click",async()=>{
   const name=$("claimname").value.trim(); if(!name){ $("claimname").focus(); return; }
   $("claimbtn").disabled=true;
-  try{ const r=await fetch("/api/claim",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state:S.token,name})}); const d=await r.json(); if(!d.ok) throw new Error(d.error); S.claimed=d.name; renderClaim(); loadLeaderboard(true); }
-  catch(e){ $("claimmsg").textContent="Could not record: "+e.message; $("claimbtn").disabled=false; }
+  try{ const r=await fetch("/api/claim",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state:S.token,name})}); const d=await r.json(); if(!d.ok) throw new Error(d.error); S.claimed=d.name; render(); loadLeaderboard(true); }
+  catch(e){ $("err").textContent="Could not record the name: "+friendly(e.message); $("claimbtn").disabled=false; }
 });
 
 // ---- replay ----
@@ -720,12 +887,15 @@ async function startReplay(id){
   if(!d.ok) throw new Error(d.error||"replay not found");
   gameSel=d.game.game; cfg=CFG[gameSel]; newGame(d.game.jev); S.status="replay"; S.backend=d.game.backend;
   R={game:d.game,turns:d.turns,k:d.turns.length-1};
-  for(const b of $("gameseg").querySelectorAll("button")) b.disabled=true;
-  $("newgame").hidden=true; $("jevopens").hidden=true; $("pass").hidden=true;
   $("replaybar").hidden=false; $("rprange").max=String(Math.max(0,d.turns.length-1)); $("rprange").value=String(R.k);
   showReplay();
 }
-function showReplay(){
+function leaveReplay(){
+  if(!R) return;
+  R=null; $("replaybar").hidden=true; $("replaycap").textContent="";
+  if(location.search) history.replaceState(null,"","./");
+}
+function showReplay(light){
   const t=R.turns[R.k]; if(!t) return;
   S.board=t.board;
   const color=(side)=> side==="jev"?S.jev:S.human;
@@ -733,35 +903,42 @@ function showReplay(){
   S.turns=R.turns.filter(x=>x.side==="jev"&&x.ply<=t.ply).map(x=>({ move:x.move, source:x.source, latencyMs:x.latencyMs, usage:{input:x.inputTokens,output:x.outputTokens}, io:x.io, answers:x.heat?{best_move:{top:x.heat,confidence:""}}:null, model:"" }));
   if(t.side==="jev"){
     const heat=t.heat||[]; const played=cfg.chess?"__played__":t.move;
-    const top= cfg.chess&&t.pick!=null ? heat : heat;
-    S.last={ move:played, source:t.source, heuristicRank:t.heuristicRank, note:null, truth:null, verdict:t.verdict, candidates:[], latencyMs:t.latencyMs, optionCount:null, usage:{input:t.inputTokens,output:t.outputTokens}, model:R.game.model||"",
-      answers: heat.length ? {best_move:{top:top,confidence:""}} : null, sanMap: cfg.chess ? Object.fromEntries(heat.map(([sq])=>[sq,{to:sq}])) : undefined };
+    S.last={ move:played, shown:t.move, pickShown:t.pick, source:t.source, heuristicRank:t.heuristicRank, note:null, truth:null, verdict:t.verdict, candidates:[], latencyMs:t.latencyMs, optionCount:null, usage:{input:t.inputTokens,output:t.outputTokens}, model:R.game.model||"",
+      answers: heat.length ? {best_move:{top:heat,confidence:""}} : null, sanMap: cfg.chess ? Object.fromEntries(heat.map(([sq])=>[sq,{to:sq}])) : undefined };
     if(!cfg.chess&&t.pick!=null&&!heat.some(([k])=>k===t.move)) S.last.answers={best_move:{top:[...heat,[t.move,t.pick]],confidence:""}};
   } else S.last=null;
   $("rprange").value=String(R.k);
   const who= t.side==="jev" ? "Jev" : "Human";
-  $("replaycap").innerHTML=`Ply ${t.ply+1} of ${R.turns.length} · <b>${who}</b> played <b>${esc(t.move)}</b>`+(t.side==="jev"?` via ${esc(t.source)}${t.heuristicRank?` · heuristic #${t.heuristicRank}`:""}${t.pick!=null?` · Jev gave it ${Math.round(t.pick*100)}%`:""}`:"")+
-    ` · <span class="na">${esc(R.game.result||"")} · ${esc(R.game.mode)} · ${esc(R.game.model||R.game.backend)}${R.game.name?" · winner "+esc(R.game.name):""}</span>`;
-  gridEl.classList.remove("faded"); render();
+  const result= R.game.result==="human_wins"?"a human win":R.game.result==="jev_wins"?"Jev won":R.game.result==="draw"?"a draw":"unfinished";
+  $("replaycap").innerHTML=`Move ${t.ply+1} of ${R.turns.length}: <b>${who}</b> played <b>${esc(t.move)}</b>`+(t.side==="jev"?` via ${esc(t.source)}${t.heuristicRank?`, heuristic #${t.heuristicRank}`:""}${t.pick!=null?`, Jev gave it ${Math.round(t.pick*100)}%`:""}`:"")+
+    `. <span class="na">${esc(result)}, ${esc(R.game.mode)} mode, ${esc(R.game.model||R.game.backend)}${R.game.name?", winner "+esc(R.game.name):""}</span>`;
+  gridEl.classList.remove("faded"); render(light);
 }
-function stepReplay(k){ if(!R) return; R.k=Math.max(0,Math.min(R.turns.length-1,k)); showReplay(); }
+function stepReplay(k,light){ if(!R) return; R.k=Math.max(0,Math.min(R.turns.length-1,k)); showReplay(light); }
 $("rpfirst").addEventListener("click",()=>stepReplay(0)); $("rplast").addEventListener("click",()=>stepReplay(1e9));
 $("rpprev").addEventListener("click",()=>stepReplay(R?R.k-1:0)); $("rpnext").addEventListener("click",()=>stepReplay(R?R.k+1:0));
-$("rprange").addEventListener("input",()=>stepReplay(Number($("rprange").value)));
+$("rprange").addEventListener("input",()=>stepReplay(Number($("rprange").value),true));
+$("rprange").addEventListener("change",()=>stepReplay(Number($("rprange").value)));
 document.addEventListener("keydown",(e)=>{ if(!R) return; if(e.key==="ArrowLeft") stepReplay(R.k-1); if(e.key==="ArrowRight") stepReplay(R.k+1); });
+$("rpexit").addEventListener("click",(e)=>{ e.preventDefault(); startNew(); });
 
-$("newgame").addEventListener("click",()=>{ newGame("O"); render(); if(cfg.chess) play(null); });
-$("jevopens").addEventListener("click",()=>{ newGame("X"); render(); play(null); });
-$("pass").addEventListener("click",()=>{ if(S.game==="go") play("pass"); });
-$("resetscore").addEventListener("click",()=>{ score={...DEFAULT_SCORE}; saveScore(); render(); });
+$("newgame").addEventListener("click",startNew);
+$("again").addEventListener("click",startNew);
+$("place").addEventListener("click",()=>{ if(S&&S.aim){ const k=S.aim; S.aim=null; play(k); } });
+$("pass").addEventListener("click",()=>{ if(S.game==="go"){ S.aim=null; play("pass"); } });
+$("resetscore").addEventListener("click",()=>{ if(!confirm("Reset the tally kept on this device? Recorded games and the hall of fame are not affected.")) return; score={...DEFAULT_SCORE}; saveScore(); render(); });
 for(const b of $("modeseg").querySelectorAll("button")) b.addEventListener("click",()=>{ modeSel=b.dataset.v; try{ localStorage.setItem(LSMODE,modeSel); }catch{} render(); });
 for(const b of $("thoughtseg").querySelectorAll("button")) b.addEventListener("click",()=>{ thoughtsSel=b.dataset.v; try{ localStorage.setItem(LSTHOUGHTS,thoughtsSel); }catch{} scheduleFade(); render(); });
-for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||b.dataset.v===gameSel) return; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} newGame("O"); render(); loadLeaderboard(); if(cfg.chess) play(null); });
+for(const b of $("openseg").querySelectorAll("button")) b.addEventListener("click",()=>{ openSel=b.dataset.v; try{ localStorage.setItem(LSOPEN,openSel); }catch{} render(); });
+for(const b of $("gameseg").querySelectorAll("button")) b.addEventListener("click",()=>{ if(S.busy||R||b.dataset.v===gameSel) return; const prev=gameSel; gameSel=b.dataset.v; try{ localStorage.setItem(LSGAME,gameSel); }catch{} const before=S; startNew(); if(S===before){ gameSel=prev; return; } loadLeaderboard(); });
 
+// On a wide screen the scoresheet has room, so the two sections a spectator reads most start open.
+if(window.matchMedia&&matchMedia("(min-width:901px)").matches){ for(const id of ["p-jev","p-lb"]) $(id).open=true; }
 renderWho(); if(me) loadMyGames();
+if(window.__gsiLoaded||(window.google&&google.accounts)) window.gsiReady(); // the Google script may have finished before this script ran
 const replayId=new URLSearchParams(location.search).get("replay");
-if(replayId){ newGame("O"); render(); startReplay(replayId).catch(e=>{ $("err").textContent=e.message; }); loadLeaderboard(); }
-else { newGame("O"); render(); loadLeaderboard(); if(cfg.chess) play(null); }
+if(replayId){ newGame("O"); render(); startReplay(replayId).catch(e=>{ $("err").textContent=friendly(e.message); }); loadLeaderboard(); }
+else { const jev= openSel==="jev" ? "X" : "O"; newGame(jev); render(); loadLeaderboard(); if(cfg.chess||jev==="X") play(null); }
 </script>
 </body>
 </html>

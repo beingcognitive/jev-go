@@ -97,7 +97,7 @@ export async function handleChessMove(body, env = {}) {
           ok: true, game: "chess", moves: mv, board: C.boardRows(c), fen: c.fen(), turn: c.turn(), inCheck: c.inCheck(),
           legal: status === "playing" && c.turn() === opp ? C.slimLegal(c) : [],
           lastMove: l ? { san: l.san, from: l.from, to: l.to } : null,
-          state: s.verified ? await sealSession(env, "chess", s, mv.length, C.snapshot(c)) : null, gameId: s.verified ? s.id : null, verified: s.verified,
+          state: s.verified ? await sealSession(env, "chess", s, mv.length, C.snapshot(c)) : null, gameId: s.verified ? s.id : null, verified: s.verified, owner: user ? user.name : null,
           status, result: st.result, backend: be.kind, mode, jev: jevInfo,
         },
         after: () => record(store, "chess", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,

@@ -114,7 +114,7 @@ export async function handleGoMove(body, env = {}) {
     const done = async (status, jevInfo, score = null) => ({
       status: 200,
       body: { ok: true, game: "go", moves: mv, board: Go.toRows(st.board), captures: st.captures, toMove: st.toMove, status, score, backend: be.kind, mode, jev: jevInfo,
-        state: s.verified ? await sealSession(env, "go", s, mv.length, mv) : null, gameId: s.verified ? s.id : null, verified: s.verified },
+        state: s.verified ? await sealSession(env, "go", s, mv.length, mv) : null, gameId: s.verified ? s.id : null, verified: s.verified, owner: user ? user.name : null },
       after: () => record(store, "go", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,
         rows: turnRows(s.id, startPly, humanBoard, humanMove, jevInfo, Go.toRows(st.board)) }),
     });

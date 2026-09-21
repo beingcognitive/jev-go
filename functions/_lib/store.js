@@ -21,6 +21,13 @@ export function memoryStore() {
       g.name = name;
       return g;
     },
+    // Attach an anonymous game to a signed-in player (sign-in after the game). A game that already has an owner is left alone.
+    async attach(id, userId, name) {
+      const g = games.get(id);
+      if (!g || g.user_id) return null;
+      g.user_id = userId; g.name = g.name || name;
+      return g;
+    },
     async myGames(userId, limit = 50) {
       return [...games.values()].filter((g) => g.user_id === userId).sort((a, b) => b.created_at - a.created_at).slice(0, limit).map(ownGame);
     },
@@ -69,6 +76,10 @@ export function d1Store(db) {
     },
     async claim(id, name) {
       const r = await db.prepare("UPDATE games SET name = ?2 WHERE id = ?1 AND result = 'human_wins' AND name IS NULL").bind(id, name).run();
+      return r.meta && r.meta.changes ? this.getGame(id) : null;
+    },
+    async attach(id, userId, name) {
+      const r = await db.prepare("UPDATE games SET user_id = ?2, name = COALESCE(name, ?3) WHERE id = ?1 AND user_id IS NULL").bind(id, userId, name).run();
       return r.meta && r.meta.changes ? this.getGame(id) : null;
     },
     async myGames(userId, limit = 50) {

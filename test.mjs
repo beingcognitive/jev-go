@@ -724,4 +724,18 @@ test("login issues a session; the session attributes games; /api/me lists them; 
   const lb = await store.leaderboard("go");
   assert.equal(lb[0].name, "Kyung-Hoon");
   assert.equal((await handleClaim({ state: r1.body.state, name: "someone else" }, {})).status, 400);
+  assert.equal(r1.body.owner, "Kyung-Hoon");
+  // sign-in after an anonymous game attaches it: the game's own state token proves the caller played it
+  const anon = await handleChessMove({ moves: [], humanMove: "d4", jev: "O", mode: "player" }, {});
+  assert.equal(anon.status, 200); assert.equal(anon.body.owner, null); if (anon.after) await anon.after();
+  assert.equal((await store.getGame(anon.body.gameId)).user_id, null);
+  const late = await handleLogin({ credential: g.token, state: anon.body.state }, {}, g.jwks);
+  assert.equal(late.status, 200); assert.equal(late.body.attached, true);
+  const ga = await store.getGame(anon.body.gameId);
+  assert.equal(ga.user_id, login.body.user.id); assert.equal(ga.name, "Kyung-Hoon");
+  assert.ok((await handleMe({ session }, {})).body.games.some((x) => x.id === anon.body.gameId));
+  // already attached, or a token that is not a game token: nothing attaches, the sign-in still succeeds
+  assert.equal((await handleLogin({ credential: g.token, state: anon.body.state }, {}, g.jwks)).body.attached, false);
+  const garbage = await handleLogin({ credential: g.token, state: "garbage" }, {}, g.jwks);
+  assert.equal(garbage.status, 200); assert.equal(garbage.body.attached, false);
 });

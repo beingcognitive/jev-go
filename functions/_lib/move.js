@@ -154,7 +154,7 @@ export async function handleMove(body, env = {}) {
     const done = async (status, jevInfo) => ({
       status: 200,
       body: { ok: true, board: G.toRows(board), moves: mv, status, backend: be.kind, mode, jev: jevInfo,
-        state: s.verified ? await sealSession(env, "gomoku", s, mv.length, G.toRows(board)) : null, gameId: s.verified ? s.id : null, verified: s.verified },
+        state: s.verified ? await sealSession(env, "gomoku", s, mv.length, G.toRows(board)) : null, gameId: s.verified ? s.id : null, verified: s.verified, owner: user ? user.name : null },
       after: () => record(store, "gomoku", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,
         rows: turnRows(s.id, startPly, humanBoard, humanKey, jevInfo, G.toRows(board)) }),
     });

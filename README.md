@@ -21,8 +21,18 @@ In Player mode the page shows where Jev's pick ranked in the code heuristic's or
 1-ply evaluation. Forced moves are logged as `forced-win`, `forced-block` and `open-four`
 and cost no call.
 
-Every Jev call's full request payload and raw response are shown in the **Jev API calls**
+Every Jev call's full request payload and raw response are shown in the **API calls**
 panel, one expandable entry per move, with copy buttons.
+
+## The page
+
+Built phone-first. The board is sized from the viewport so it never scrolls sideways; on a phone a
+first tap aims a stone (a ghost appears with a "Place H8" button) and a second tap plays it, while a
+mouse previews on hover and plays on click. Under the board: the status line with the record chip,
+the one action that matters (Place, Pass, New game), the result card at game end, and a one-line
+card saying what Jev played, how sure it was and why. Everything for the researcher (Jev's candidate
+list, the per-move table, the API calls, the settings, your games, the hall of fame) sits in
+collapsible sections below; on a wide screen the board column sticks while you read them.
 
 ## Go 9×9
 
@@ -41,7 +51,7 @@ Dead stones are not removed at the end, so capture them before passing.
 
 ## Screenshots
 
-Player mode, Jev (white) wins a Gomoku game. Right panel: the last call, per-move table
+Player mode, Jev (white) wins a Gomoku game. The scoresheet: the last call, per-move table
 with where Jev's pick ranked in the heuristic, and the API log.
 
 ![Jev's last thought, per-move table and stats](docs/img/gomoku-thought.png)
@@ -86,11 +96,15 @@ server keeps records in memory only.
 
 ## Sign in with Google
 
-Optional. The page shows Google's sign-in button; the browser posts the ID token to `POST /api/login`,
-the server verifies Google's RS256 signature against Google's published keys with WebCrypto, checks
-issuer, audience and expiry, and issues its own 30-day HMAC session. Every move then carries the
-session, so games and wins are attributed automatically, the hall of fame shows your Google first
-name without a claim, and `POST /api/me` lists your games with replay links on any device.
+Optional. The page shows Google's sign-in button in the top bar and again on the result card; the
+browser posts the ID token to `POST /api/login`, the server verifies Google's RS256 signature against
+Google's published keys with WebCrypto, checks issuer, audience and expiry, and issues its own 30-day
+HMAC session. Every move then carries the session, so games and wins are attributed automatically, the
+hall of fame shows your Google first name without a claim, and `POST /api/me` lists your games with
+replay links on any device. Signing in after a game (even after a win) still keeps it: the login request
+carries the game's signed state token, which proves you played it, and the server attaches the game to
+the account. The record chip next to the status line says whether the game on screen counts and under
+which name.
 
 Stored: a hash of the Google subject id and the display name. Never the email or anything from the
 mailbox; sign-in requests identity only. The OAuth client id is public and set in the page and in
@@ -122,8 +136,8 @@ wrangler.toml             Pages project config
 ## Backend selection
 
 With `TYPESAFE_API_KEY` set, every move is one `POST https://api.typesafe.ai/v1/systemone` with model
-`jev-latest`. Without it the server plays a heuristic stand-in and the page badge reads "opponent: mock, no key" instead of "opponent: Jev, live", so the
-app runs locally with no key. `STATE_SECRET` optionally signs the chess state tokens; it defaults to the API key.
+`jev-latest`. Without it the server plays a heuristic stand-in and the record chip next to the status
+line reads "Practice opponent" instead of "Recorded", so the app runs locally with no key. `STATE_SECRET` optionally signs the chess state tokens; it defaults to the API key.
 
 ## Run locally
 
