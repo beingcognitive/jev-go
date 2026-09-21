@@ -281,9 +281,10 @@ dialog.gate .help{margin:8px 0 0}
       <div class="row"><button class="primary" id="again">Play again</button> <button id="rsign" hidden>Sign in</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
     </div>
     <div class="replaybar" id="replaybar" hidden>
-      <button id="rpfirst" title="Start">⏮</button><button id="rpprev" title="Previous">◀</button>
+      <button class="primary" id="rpplay" title="Play the game through">▶ Play</button>
+      <button id="rpfirst" title="Start">⏮</button><button id="rpprev" title="Previous move">‹</button>
       <input type="range" id="rprange" min="0" max="0" value="0" aria-label="Move">
-      <button id="rpnext" title="Next">▶</button><button id="rplast" title="End">⏭</button>
+      <button id="rpnext" title="Next move">›</button><button id="rplast" title="End">⏭</button>
       <a class="link" id="rpexit" href="./">Leave the replay</a>
     </div>
     <div class="replaycap" id="replaycap"></div>
@@ -955,7 +956,7 @@ async function startReplay(id){
 }
 function leaveReplay(){
   if(!R) return;
-  R=null; $("replaybar").hidden=true; $("replaycap").textContent="";
+  rpStop(); R=null; $("replaybar").hidden=true; $("replaycap").textContent="";
   if(location.search) history.replaceState(null,"","./");
 }
 // Go captures are not stored per ply; count the stones that vanished between consecutive boards.
@@ -985,11 +986,23 @@ function showReplay(light){
   gridEl.classList.remove("faded"); render(light);
 }
 function stepReplay(k,light){ if(!R) return; R.k=Math.max(0,Math.min(R.turns.length-1,k)); showReplay(light); }
-$("rpfirst").addEventListener("click",()=>stepReplay(0)); $("rplast").addEventListener("click",()=>stepReplay(1e9));
-$("rpprev").addEventListener("click",()=>stepReplay(R?R.k-1:0)); $("rpnext").addEventListener("click",()=>stepReplay(R?R.k+1:0));
-$("rprange").addEventListener("input",()=>stepReplay(Number($("rprange").value),true));
-$("rprange").addEventListener("change",()=>stepReplay(Number($("rprange").value)));
-document.addEventListener("keydown",(e)=>{ if(!R||e.target===$("rprange")||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return; if(e.key==="ArrowLeft") stepReplay(R.k-1); if(e.key==="ArrowRight") stepReplay(R.k+1); });
+// Play runs the game through at about one move a second; any hand step pauses it; at the end it starts over.
+const RP_STEP_MS=1100; let rpTimer=null;
+function rpStop(){ clearInterval(rpTimer); rpTimer=null; $("rpplay").textContent="▶ Play"; }
+function rpPlay(){
+  if(!R) return;
+  if(rpTimer){ rpStop(); return; }
+  if(R.k>=R.turns.length-1) stepReplay(0);
+  $("rpplay").textContent="❚❚ Pause";
+  rpTimer=setInterval(()=>{ if(!R||R.k>=R.turns.length-1){ rpStop(); return; } stepReplay(R.k+1); },RP_STEP_MS);
+}
+const byHand=(k,light)=>{ rpStop(); stepReplay(k,light); };
+$("rpplay").addEventListener("click",rpPlay);
+$("rpfirst").addEventListener("click",()=>byHand(0)); $("rplast").addEventListener("click",()=>byHand(1e9));
+$("rpprev").addEventListener("click",()=>byHand(R?R.k-1:0)); $("rpnext").addEventListener("click",()=>byHand(R?R.k+1:0));
+$("rprange").addEventListener("input",()=>byHand(Number($("rprange").value),true));
+$("rprange").addEventListener("change",()=>byHand(Number($("rprange").value)));
+document.addEventListener("keydown",(e)=>{ if(!R||e.target===$("rprange")||/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return; if(e.key==="ArrowLeft") byHand(R.k-1); if(e.key==="ArrowRight") byHand(R.k+1); if(e.key===" "){ e.preventDefault(); rpPlay(); } });
 $("rpexit").addEventListener("click",(e)=>{ e.preventDefault(); startNew(); });
 
 $("newgame").addEventListener("click",()=>{ if(startNew("O")) $("menu").close(); });
