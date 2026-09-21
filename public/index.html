@@ -5,143 +5,158 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Can you beat Jev?</title>
 <meta name="description" content="Can you beat Jev at Gomoku, Go or chess? Play TypeSafe's System One decision model, with every API call shown.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#f6f1e7; --panel:#fffaf0; --ink:#1f1a14; --muted:#6b6257; --border:#e5d9c3;
-  --wood:#e2b96f; --wood2:#cfa257; --line:#7a5a2a; --lbl:#3b2a10;
-  --accent:#2563eb; --good:#15803d; --bad:#b91c1c; --warn:#b45309;
-  --cell:min(5.6vw,34px);
+  --paper:#eef0ea; --sheet:#f7f8f4; --ink:#1e211c; --ink-2:#5a6156; --rule:#d4d9cf;
+  --felt:#2f5d3a; --felt-2:#25492e; --felt-soft:rgba(47,93,58,.14);
+  --signal:#c8102e; --good:#2f5d3a; --bad:#b3261e; --warn:#9a6b00;
+  --wood:#d9b06a; --wood-2:#c4974f; --line:#6e5027; --coord:#3b2c14;
+  --cell:min(5.8vw,40px);
+  --serif:"Fraunces",Georgia,serif; --sans:"Atkinson Hyperlegible",system-ui,sans-serif;
 }
-@media (prefers-color-scheme: dark){
+@media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#15120e; --panel:#1f1a14; --ink:#f1e8d8; --muted:#a89b88; --border:#3a3128;
-    --wood:#b9884a; --wood2:#a4763c; --line:#3e2a10; --lbl:#2a1c08;
+    --paper:#171a16; --sheet:#1e221c; --ink:#e9ece4; --ink-2:#a3aa9c; --rule:#2f352c;
+    --felt:#5f9c6a; --felt-2:#4c8556; --felt-soft:rgba(95,156,106,.2);
+    --wood:#b98b4c; --wood-2:#a3773d; --line:#3d2a10; --coord:#2a1c08;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#15120e; --panel:#1f1a14; --ink:#f1e8d8; --muted:#a89b88; --border:#3a3128;
-  --wood:#b9884a; --wood2:#a4763c; --line:#3e2a10; --lbl:#2a1c08;
+  --paper:#171a16; --sheet:#1e221c; --ink:#e9ece4; --ink-2:#a3aa9c; --rule:#2f352c;
+  --felt:#5f9c6a; --felt-2:#4c8556; --felt-soft:rgba(95,156,106,.2);
+  --wood:#b98b4c; --wood-2:#a3773d; --line:#3d2a10; --coord:#2a1c08;
 }
 *{box-sizing:border-box}
 [hidden]{display:none !important}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px}
-header{max-width:1100px;margin:0 auto 12px}
-h1{font-size:22px;margin:0 0 4px}
-.sub{color:var(--muted);font-size:14px}
-main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:start}
-@media (max-width:860px){main{grid-template-columns:1fr}}
-.boardwrap{background:linear-gradient(135deg,var(--wood),var(--wood2));padding:10px 10px 12px 6px;border-radius:10px;display:inline-block;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--sans);padding:20px 16px 40px}
+:focus-visible{outline:3px solid var(--felt);outline-offset:2px}
+a{color:var(--felt)}
+header{max-width:1120px;margin:0 auto 18px}
+h1{font:600 clamp(28px,4vw,40px)/1.1 var(--serif);font-variation-settings:"opsz" 72;letter-spacing:-.01em;margin:0 0 6px}
+.sub{color:var(--ink-2);font-size:15px;max-width:66ch;margin:0}
+main{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:900px){main{grid-template-columns:1fr}}
+
+/* ----- the board is the hero ----- */
+.boardwrap{background:linear-gradient(160deg,var(--wood),var(--wood-2));padding:12px 12px 14px 8px;border-radius:6px;display:inline-block;box-shadow:0 18px 40px -18px rgba(30,33,28,.55),inset 0 0 0 1px rgba(255,255,255,.18)}
 .grid{display:grid}
-.lbl{font-size:11px;color:var(--lbl);display:flex;align-items:center;justify-content:center;user-select:none}
+.lbl{font-size:11px;color:var(--coord);display:flex;align-items:center;justify-content:center;user-select:none;font-variant-numeric:tabular-nums}
 .cell{position:relative;cursor:pointer}
 .cell::before{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:var(--line);transform:translateY(-.5px)}
 .cell::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-.5px)}
 .cell.edge-l::before{left:50%}.cell.edge-r::before{right:50%}
 .cell.edge-t::after{top:50%}.cell.edge-b::after{bottom:50%}
 .cell.locked{cursor:default}
-@keyframes settle{from{transform:scale(.5);opacity:0}to{transform:scale(.94);opacity:.5}}
-@keyframes breathe{0%,100%{transform:scale(.94);opacity:.5}50%{transform:scale(1.03);opacity:.78}}
-.ghost{position:absolute;inset:10%;border-radius:50%;z-index:2;pointer-events:none;opacity:.5;transform:scale(.94);box-shadow:0 1px 3px rgba(0,0,0,.35);animation:settle .16s ease-out,breathe 1.8s ease-in-out .16s infinite}
-.ghost.X{background:radial-gradient(circle at 35% 35%,#6a6a6a,#000)}
-.ghost.O{background:radial-gradient(circle at 35% 35%,#fff,#d0d0d0);border:1px solid #999}
-@media (prefers-reduced-motion:reduce){.ghost{animation:none}.grid.chess .cell:hover .ghostpiece{animation:none}}
 .dot{position:absolute;left:50%;top:50%;width:5px;height:5px;background:var(--line);border-radius:50%;transform:translate(-50%,-50%);z-index:1}
-.stone{position:absolute;inset:10%;border-radius:50%;z-index:3;box-shadow:0 1px 3px rgba(0,0,0,.45)}
-.stone.X{background:radial-gradient(circle at 35% 35%,#5a5a5a,#000)}
-.stone.O{background:radial-gradient(circle at 35% 35%,#fff,#cdcdcd);border:1px solid #8d8d8d}
+.stone{position:absolute;inset:9%;border-radius:50%;z-index:3;box-shadow:0 2px 4px rgba(0,0,0,.45),inset 0 -2px 3px rgba(0,0,0,.15)}
+.stone.X{background:radial-gradient(circle at 34% 32%,#5d5d5d,#050505 68%)}
+.stone.O{background:radial-gradient(circle at 34% 32%,#ffffff,#cfcfcf 70%);border:1px solid #8f8f8f}
 .stone.pending{opacity:.55}
-.last{position:absolute;left:50%;top:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;background:#e11d48;z-index:4}
-.heat{position:absolute;inset:14%;border-radius:50%;background:var(--accent);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700;pointer-events:none}
+.last{position:absolute;left:50%;top:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;background:var(--signal);z-index:4}
+.heat{position:absolute;inset:14%;border-radius:50%;background:var(--felt);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700;pointer-events:none;font-variant-numeric:tabular-nums}
 .heat,.cand,.truth{transition:opacity 1.6s ease,transform 1.6s ease}
 .grid.faded .heat{opacity:0 !important;transform:scale(.55)}
 .grid.faded .cand,.grid.faded .truth{opacity:0 !important}
-.pick{transition:opacity 1.2s ease}
+.pick{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;z-index:5;pointer-events:none;transition:opacity 1.2s ease;font-variant-numeric:tabular-nums}
+.pick.X{color:#fff}.pick.O{color:#1e211c}
 .last.under{opacity:0;transition:opacity 1.2s ease .6s}
 .grid.faded .pick{opacity:0}
 .grid.faded .last.under{opacity:1}
-.grid.hidethoughts .heat,.grid.hidethoughts .cand{display:none}
-.pick{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;letter-spacing:-.02em;z-index:5;pointer-events:none}
-.pick.X{color:#fff}.pick.O{color:#1f1a14}
 @keyframes pop{from{transform:scale(.55);opacity:.3}to{transform:scale(1);opacity:1}}
 .stone.new{animation:pop .22s ease-out}
-.cand{position:absolute;inset:30%;border-radius:50%;border:1.5px solid var(--accent);opacity:.45;z-index:1}
-.truth{position:absolute;inset:8%;border-radius:50%;border:2px dashed var(--bad);z-index:2}
-.boardwrap.chess{background:linear-gradient(135deg,#7a5a3a,#5e4327)}
+.cand{position:absolute;inset:30%;border-radius:50%;border:1.5px solid var(--felt);opacity:.5;z-index:1}
+.truth{position:absolute;inset:8%;border-radius:50%;border:2px dashed var(--signal);z-index:2}
+@keyframes settle{from{transform:scale(.5);opacity:0}to{transform:scale(.94);opacity:.5}}
+@keyframes breathe{0%,100%{transform:scale(.94);opacity:.5}50%{transform:scale(1.03);opacity:.78}}
+.ghost{position:absolute;inset:9%;border-radius:50%;z-index:2;pointer-events:none;opacity:.5;transform:scale(.94);box-shadow:0 1px 3px rgba(0,0,0,.35);animation:settle .16s ease-out,breathe 1.8s ease-in-out .16s infinite}
+.ghost.X{background:radial-gradient(circle at 34% 32%,#6a6a6a,#000)}
+.ghost.O{background:radial-gradient(circle at 34% 32%,#fff,#d0d0d0);border:1px solid #999}
+/* chess */
+.boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25)}
 .grid.chess .cell::before,.grid.chess .cell::after{display:none}
-.grid.chess .cell.light{background:#f0d9b5}.grid.chess .cell.dark{background:#b58863}
-.grid.chess .cell.lastmv{box-shadow:inset 0 0 0 100px rgba(37,99,235,.28)}
-.grid.chess .cell.sel{box-shadow:inset 0 0 0 3px var(--accent)}
-.grid.chess .cell.check{background-image:radial-gradient(circle,rgba(220,38,38,.75),rgba(220,38,38,0) 72%)}
+.grid.chess .cell.light{background:#efdcbb}.grid.chess .cell.dark{background:#a97c55}
+.grid.chess .cell.lastmv{box-shadow:inset 0 0 0 100px var(--felt-soft)}
+.grid.chess .cell.sel{box-shadow:inset 0 0 0 3px var(--felt)}
+.grid.chess .cell.check{background-image:radial-gradient(circle,rgba(200,16,46,.75),rgba(200,16,46,0) 72%)}
 .piece{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(var(--cell)*.74);line-height:1;z-index:3;user-select:none;pointer-events:none}
 .piece.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000,0 1px 1px rgba(0,0,0,.6)}.piece.b{color:#111;text-shadow:0 0 1px #fff}
 .target{position:absolute;left:50%;top:50%;width:26%;height:26%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(0,0,0,.28);z-index:2;pointer-events:none}
 .target.cap{width:86%;height:86%;background:none;border:4px solid rgba(0,0,0,.28)}
 .ghostpiece{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:calc(var(--cell)*.74);line-height:1;opacity:0;z-index:4;pointer-events:none;transition:opacity .12s;user-select:none}
 .ghostpiece.w{color:#fff;text-shadow:0 0 2px #000,0 0 1px #000}.ghostpiece.b{color:#111;text-shadow:0 0 1px #fff}
+.grid.chess .heat{inset:auto 6% 6% auto;width:44%;height:36%;border-radius:5px;font-size:10px}
+.grid.chess .cand{inset:8%;border-radius:6px}
+.pickc{position:absolute;left:3px;top:3px;font-size:9px;font-weight:700;background:var(--felt);color:#fff;border-radius:4px;padding:1px 4px;z-index:5;pointer-events:none;transition:opacity 1.2s ease}
+.grid.faded .pickc{opacity:0}
 @media (hover:hover){
   .grid.chess .cell:hover .ghostpiece{opacity:.55;animation:breathe 1.8s ease-in-out infinite}
-  .grid.chess .cell:hover .ghostpiece~.target,.grid.chess .cell:hover .target{opacity:.35}
-  .grid.chess .cell.canpick:hover{box-shadow:inset 0 0 0 3px rgba(37,99,235,.45)}
+  .grid.chess .cell:hover .target{opacity:.35}
+  .grid.chess .cell.canpick:hover{box-shadow:inset 0 0 0 3px var(--felt-soft)}
 }
-.grid.chess .heat{inset:auto 6% 6% auto;width:44%;height:36%;border-radius:6px;font-size:10px}
-.grid.chess .cand{inset:8%;border-radius:8px}
-.pickc{position:absolute;left:3px;top:3px;font-size:9px;font-weight:800;background:var(--accent);color:#fff;border-radius:6px;padding:1px 4px;z-index:5;pointer-events:none;transition:opacity 1.2s ease}
-.grid.faded .pickc{opacity:0}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
-.panel h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.statusrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
-.status{font-size:17px;font-weight:600;min-height:24px}
-.controls{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 14px;align-items:start;margin-top:12px}
-.controls .lab{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding-top:9px}
-.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg);flex-wrap:wrap;justify-self:start}
-.seg button{border:0;border-radius:0;background:transparent;padding:6px 12px;font-size:14px}
-.seg button+button{border-left:1px solid var(--border)}
-.seg button.on{background:var(--accent);color:#fff}
+@media (prefers-reduced-motion:reduce){.ghost,.stone.new{animation:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick{transition:none}}
+
+/* ----- the scoresheet: one column, sections divided by rules ----- */
+.panel{background:transparent;border:0;border-top:1px solid var(--rule);border-radius:0;padding:18px 0 4px;margin:0}
+.panel:first-child{border-top:0;padding-top:0}
+.panel h2{font:600 19px/1.25 var(--serif);font-variation-settings:"opsz" 24;letter-spacing:0;text-transform:none;color:var(--ink);margin:0 0 10px}
+.statusrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.status{font:600 clamp(20px,2.4vw,26px)/1.2 var(--serif);font-variation-settings:"opsz" 36;min-height:28px}
+.scoreline{font-size:15px;color:var(--ink-2);margin-top:4px;font-variant-numeric:tabular-nums}
+.controls{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px 16px;align-items:start;margin-top:14px}
+.controls .lab{font-size:15px;color:var(--ink-2);padding-top:8px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:4px;overflow:hidden;background:var(--sheet);flex-wrap:wrap;justify-self:start}
+.seg button{border:0;border-radius:0;background:transparent;padding:7px 14px;font-size:15px;color:var(--ink)}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button.on{background:var(--felt);color:#fff}
 .seg button:disabled{opacity:.5}
 .actions{display:flex;flex-wrap:wrap;gap:8px}
 @media (max-width:480px){.controls{grid-template-columns:1fr}.controls .lab{padding-top:0}}
-.scoreline{font-size:14px;color:var(--muted);margin-top:4px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-button,select{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);cursor:pointer}
-button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-button.small{padding:3px 8px;font-size:12px}
+button,select{font:inherit;font-size:15px;padding:7px 14px;border-radius:4px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);cursor:pointer}
+button.primary{background:var(--felt);color:#fff;border-color:var(--felt)}
+button.primary:hover{background:var(--felt-2)}
+button.small{padding:3px 8px;font-size:13px}
 button:disabled{opacity:.5;cursor:default}
-label.toggle{display:inline-flex;gap:6px;align-items:center;color:var(--muted);font-size:14px}
-.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--border);color:var(--muted)}
+label.toggle{display:inline-flex;gap:6px;align-items:center;color:var(--ink-2);font-size:15px}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;border:1px solid var(--rule);color:var(--ink-2)}
 .badge.mock{color:var(--warn);border-color:var(--warn)}
-.badge.live{color:var(--good);border-color:var(--good)}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
-th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--panel)}
-.ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--muted)}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
-.kv b{font-weight:600;color:var(--muted)}
-.opts{margin:6px 0 0;padding:0;list-style:none;font-size:13px}
-.opts li{padding:2px 0;border-bottom:1px dashed var(--border)}
-.opts .k{font-weight:700;display:inline-block;min-width:38px}
-.opts .p{color:var(--accent);font-weight:600;display:inline-block;min-width:40px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
-.stat{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px}
-.stat .n{font-size:20px;font-weight:700}.stat .l{font-size:12px;color:var(--muted)}
-.err{color:var(--bad);font-size:13px;margin-top:6px;white-space:pre-wrap}
-.tablewrap{overflow:auto;max-height:280px}
-.modehelp{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.35}
-details.io{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)}
-details.io summary{cursor:pointer;padding:6px 10px;font-size:13px;font-weight:600}
-.io.nocall{padding:6px 10px;font-size:13px;font-weight:600;opacity:.75}
-details.io .body{padding:0 10px 10px}
-details.io h3{font-size:12px;margin:8px 0 4px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between;align-items:center}
-pre{margin:0;max-height:320px;overflow:auto;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;white-space:pre}
-footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
-.claim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-.claim input{font:inherit;font-size:14px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);min-width:180px}
-.lb{width:100%;border-collapse:collapse;font-size:13px}
-.lb td,.lb th{padding:4px 6px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
-.lb a{color:var(--accent);text-decoration:none}
-.replaybar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-.replaybar input[type=range]{flex:1;min-width:160px}
-.replaycap{font-size:14px;margin-top:6px}
-a.link{color:var(--accent)}
+.badge.live{color:var(--good);border-color:var(--good);background:var(--felt-soft)}
+.modehelp{font-size:14px;color:var(--ink-2);margin-top:6px;line-height:1.4;max-width:60ch}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);white-space:nowrap}
+th{color:var(--ink-2);font-weight:400;position:sticky;top:0;background:var(--paper)}
+.ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--ink-2)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:15px}
+.kv b{font-weight:400;color:var(--ink-2)}
+.opts{margin:8px 0 0;padding:0;list-style:none;font-size:14px}
+.opts li{padding:3px 0;border-bottom:1px dashed var(--rule)}
+.opts .k{font-weight:700;display:inline-block;min-width:40px}
+.opts .p{color:var(--felt);font-weight:700;display:inline-block;min-width:44px;font-variant-numeric:tabular-nums}
+.stats{display:flex;flex-wrap:wrap;gap:0 22px;margin:0 0 12px}
+.stat{padding:2px 0 6px}
+.stat .n{font:600 22px/1.1 var(--serif);font-variation-settings:"opsz" 36;font-variant-numeric:tabular-nums}
+.stat .l{font-size:13px;color:var(--ink-2)}
+.err{color:var(--bad);font-size:14px;margin-top:8px;white-space:pre-wrap}
+.tablewrap{overflow:auto;max-height:300px}
+details.io{border-bottom:1px solid var(--rule);background:transparent}
+details.io summary{cursor:pointer;padding:8px 0;font-size:14px}
+details.io .body{padding:0 0 12px}
+details.io h3{font-size:14px;margin:8px 0 4px;color:var(--ink-2);font-weight:400;display:flex;justify-content:space-between;align-items:center}
+.io.nocall{padding:8px 0;font-size:14px;border-bottom:1px solid var(--rule);color:var(--ink-2)}
+pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre}
+footer{max-width:1120px;margin:22px auto 0;color:var(--ink-2);font-size:13px;line-height:1.5;max-width:80ch}
+.claim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.claim input{font:inherit;font-size:15px;padding:7px 10px;border-radius:4px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);min-width:200px}
+.lb{width:100%;border-collapse:collapse;font-size:14px}
+.lb td,.lb th{padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap}
+.replaybar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.replaybar input[type=range]{flex:1;min-width:160px;accent-color:var(--felt)}
+.replaycap{font-size:15px;margin-top:8px}
+a.link{color:var(--felt)}
 </style>
 </head>
 <body>
@@ -174,31 +189,31 @@ a.link{color:var(--accent)}
         <span class="lab">Play</span>
         <div class="actions">
           <button class="primary" id="newgame">New game</button>
-          <button id="jevopens">New game · Jev opens</button>
+          <button id="jevopens">New game, Jev opens</button>
           <button id="pass" hidden>Pass</button>
         </div>
       </div>
       <div class="claim" id="claim" hidden>
-        <input id="claimname" maxlength="24" placeholder="Your name for the hall of fame">
-        <button class="primary" id="claimbtn">Record my win</button>
+        <input id="claimname" maxlength="24" placeholder="Your name">
+        <button class="primary" id="claimbtn">Add my name</button>
         <span class="na" id="claimmsg"></span>
       </div>
       <div class="replaybar" id="replaybar" hidden>
         <button id="rpfirst" title="Start">⏮</button><button id="rpprev" title="Previous">◀</button>
         <input type="range" id="rprange" min="0" max="0" value="0">
         <button id="rpnext" title="Next">▶</button><button id="rplast" title="End">⏭</button>
-        <a class="link" id="rpexit" href="./">Exit replay</a>
+        <a class="link" id="rpexit" href="./">Leave the replay</a>
       </div>
       <div class="replaycap" id="replaycap"></div>
       <div class="err" id="err"></div>
     </div>
     <div class="panel">
-      <h2>Jev's last thought</h2>
+      <h2>What Jev just thought</h2>
       <div id="thought" class="kv"><span class="na">No move yet.</span></div>
       <ul class="opts" id="opts"></ul>
     </div>
     <div class="panel">
-      <h2>This game</h2>
+      <h2>This game, move by move</h2>
       <div class="stats" id="gamestats"></div>
       <div class="tablewrap"><table>
         <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th id="h1">Win detect</th><th id="h2">Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
@@ -206,32 +221,32 @@ a.link{color:var(--accent)}
       </table></div>
     </div>
     <div class="panel">
-      <h2>Jev API calls · request and response</h2>
+      <h2>Every call to Jev, request and response</h2>
       <div id="iolog"><span class="na">No calls yet.</span></div>
     </div>
     <div class="panel">
-      <h2 id="lbTitle">Hall of fame · people who beat Jev</h2>
+      <h2 id="lbTitle">Hall of fame</h2>
       <div id="lbstats" class="stats"></div>
       <div class="tablewrap" id="lb"><span class="na">Loading…</span></div>
     </div>
     <div class="panel">
-      <h2 id="alltimeTitle">All games on this browser</h2>
+      <h2 id="alltimeTitle">Your record on this browser</h2>
       <div class="stats" id="alltime"></div>
-      <div class="row"><button id="resetscore">Reset record</button></div>
+      <div class="row"><button id="resetscore">Clear this record</button></div>
     </div>
   </div>
 </main>
-<footer>Blue discs are Jev's top-5 probabilities, sized by probability; the number on the last stone is the probability Jev gave the move it played. They fade when you start your move (Thoughts: Fade), or stay (Keep). Thin blue rings are the candidate pool code offered in Player mode. A dashed red ring marks a point code identified that Jev missed in Naked or Assisted mode. "Via" says who decided: moves labelled forced or only-move are played by code with no call; best is Jev's pick. "Heur." is where Jev's pick ranked in the code heuristic's ordering.</footer>
+<footer>The green discs are Jev's five most likely moves, sized by probability, and the number on its last stone is how likely it thought that move was. They fade when you start your move, or stay if you choose Keep. Thin rings mark the candidates code offered in Player mode. A dashed red ring marks a forced point Jev missed in Naked or Assisted mode. In the table, "via" says who decided: forced and only-move were played by code without a call, best is Jev's own pick, and "heur." is where that pick ranked in the code's ordering.</footer>
 <script>
 const CFG={
   gomoku:{ title:"Can you beat Jev at Gomoku?", name:"Gomoku", sub:"15×15, five in a row. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.",
-    size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cell:"min(5.6vw,34px)", endpoint:"/api/move",
+    size:15, cols:"ABCDEFGHIJKLMNO", stars:[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]], cell:"min(5.8vw,40px)", endpoint:"/api/move",
     q1:"win_now", q2:"must_block", t1:"win", t2:"block", h1:"Win detect", h2:"Block detect", l1:"wins found", l2:"forced blocks found", pass:false, ls:"jev-gomoku-v2" },
   go:{ title:"Can you beat Jev at Go?", name:"Go", sub:"9×9 Go, area scoring, komi 7.5, positional superko. Code computes captures, atari, liberties and eye-fills for every legal point and ranks them; Jev picks. Dead stones are not removed at the end, so capture them before passing.",
-    size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(9vw,54px)", endpoint:"/api/go",
+    size:9, cols:"ABCDEFGHJ", stars:[[2,2],[2,6],[4,4],[6,2],[6,6]], cell:"min(9.4vw,62px)", endpoint:"/api/go",
     q1:"capture_now", q2:"must_save", t1:"capture", t2:"save", h1:"Capture detect", h2:"Save detect", l1:"captures found", l2:"saves found", pass:true, ls:"jev-go-v1" },
   chess:{ title:"Can you beat Jev at chess?", name:"chess", sub:"Standard chess; rules from chess.js. Code annotates every legal move (captures, checks, what hangs, what it threatens, what the opponent could take back) and ranks them; Jev picks. Mate in one is played by code. Click a piece, then a square; pawns promote to a queen.",
-    size:8, cols:"abcdefgh", stars:[], cell:"min(10vw,58px)", endpoint:"/api/chess",
+    size:8, cols:"abcdefgh", stars:[], cell:"min(10.4vw,66px)", endpoint:"/api/chess",
     q1:"mate_now", q2:"win_material", t1:"mate", t2:"material", h1:"Mate detect", h2:"Material detect", l1:"mates found", l2:"free captures found", pass:false, ls:"jev-chess-v1", chess:true },
 };
 const GLYPH={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
@@ -420,13 +435,13 @@ function renderIO(){
   if(!S.turns.length){ $("iolog").innerHTML=`<span class="na">No calls yet.</span>`; return; }
   const lastCall=S.turns.reduce((m,t,i)=>t.io?i:m,-1);
   $("iolog").innerHTML=S.turns.map((t,i)=>{
-    if(!t.io) return `<div class="io nocall"><span>Move ${i+1} · played ${esc(t.move)} via ${esc(t.source)} · <span class="na">decided by code, no Jev call${t.note?" · "+esc(t.note):""}</span></span></div>`;
+    if(!t.io) return `<div class="io nocall"><span>Move ${i+1}: ${esc(t.move)} via ${esc(t.source)}, decided by code, no call to Jev${t.note?" ("+esc(t.note)+")":""}</span></div>`;
     const open= i===lastCall ? " open" : "";
     const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
-    return `<details class="io"${open}><summary>Move ${i+1} · played ${esc(t.move)} via ${esc(t.source)} · ${t.latencyMs} ms · ${esc(tokens(t))} · request ${(req.length/1024).toFixed(1)} KB</summary>
+    return `<details class="io"${open}><summary>Move ${i+1}: ${esc(t.move)} via ${esc(t.source)}, ${t.latencyMs} ms, ${esc(tokens(t))}, request ${(req.length/1024).toFixed(1)} KB</summary>
       <div class="body">
-        <h3>Request → ${esc(t.model||"")} <button class="small" data-copy="req-${i}">copy</button></h3><pre id="req-${i}">${esc(req)}</pre>
-        <h3>Response <button class="small" data-copy="res-${i}">copy</button></h3><pre id="res-${i}">${esc(res)}</pre>
+        <h3>Request to ${esc(t.model||"Jev")} <button class="small" data-copy="req-${i}">Copy</button></h3><pre id="req-${i}">${esc(req)}</pre>
+        <h3>Response <button class="small" data-copy="res-${i}">Copy</button></h3><pre id="res-${i}">${esc(res)}</pre>
       </div></details>`;
   }).join("");
   for(const b of $("iolog").querySelectorAll("button[data-copy]")){
@@ -573,9 +588,9 @@ function render(){
   if(lastKey) S._animated=lastKey;
   renderIO();
 
-  $("alltimeTitle").textContent=`All games on this browser · ${recordBackend==="native"?"against Jev":"against the mock"}`;
+  $("alltimeTitle").textContent=`Your record on this browser, ${recordBackend==="native"?"against Jev":"against the mock"}`;
   $("alltime").innerHTML=
-    stat(score.games,"games")+stat(`${score.jev} · ${score.human} · ${score.draw}`,"Jev · you · draw")+stat(pct(score.jev,score.games),"Jev win rate")+
+    stat(score.games,"games")+stat(`${score.jev}–${score.human}–${score.draw}`,"Jev, you, draws")+stat(pct(score.jev,score.games),"Jev win rate")+
     stat(pct(score.agree,score.ranked),`heuristic #1 (${score.ranked})`)+
     stat(pct(score.q1Found,score.q1Opp),`${cfg.l1} (${score.q1Opp})`)+stat(pct(score.q2Found,score.q2Need),`${cfg.l2} (${score.q2Need})`)+
     stat(score.calls?Math.round(score.latency/score.calls):"–","avg ms per call");
@@ -583,7 +598,7 @@ function render(){
 
 // ---- hall of fame ----
 async function loadLeaderboard(fresh){
-  $("lbTitle").textContent=`Hall of fame · people who beat Jev at ${cfg.name}`;
+  $("lbTitle").textContent=`Hall of fame: people who beat Jev at ${cfg.name}`;
   try{
     const r=await fetch(`/api/leaderboard?game=${gameSel}${fresh?"&t="+Date.now():""}`); const d=await r.json();
     if(!d.ok) throw new Error(d.error);
