@@ -133,7 +133,7 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
   .grid.chess .cell:hover .target{opacity:.35}
   .grid.chess .cell.canpick:hover .piece{transform:scale(1.12) translateY(-4%);filter:drop-shadow(0 4px 4px rgba(0,0,0,.35));z-index:5}
 }
-@media (prefers-reduced-motion:reduce){.ghost,.ghost.aim,.stone.new,.captured,.grid.chess .cell.check.justchecked{animation:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick,.pickc{transition:none}}
+@media (prefers-reduced-motion:reduce){details.io summary::before{transition:none}.ghost,.ghost.aim,.stone.new,.captured,.grid.chess .cell.check.justchecked{animation:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick,.pickc{transition:none}}
 
 /* ----- under the board: the one line and the one action the player needs ----- */
 .scoreline{font-size:14px;color:var(--ink-2);margin-top:8px;font-variant-numeric:tabular-nums}
@@ -205,12 +205,23 @@ th{color:var(--ink-2);font-weight:400}
 .ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--ink-2)}
 .tablewrap{overflow-x:auto;max-width:100%}
 .tablewrap a,.lb a{display:inline-block;padding:8px 6px;margin:-8px -6px}
-details.io{border-bottom:1px solid var(--rule)}
-details.io summary{cursor:pointer;padding:9px 0;font-size:14px;min-height:40px}
-details.io .body{padding:0 0 12px}
-details.io h3{font:400 14px/1.3 var(--sans);margin:8px 0 4px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center}
-.io.nocall{padding:8px 0;font-size:14px;border-bottom:1px solid var(--rule);color:var(--ink-2)}
-pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre;max-width:100%}
+/* each call is a raised card: newest first, the newest open; the request wears felt, the response wears wood */
+details.io{background:var(--sheet);border:1px solid var(--rule);border-radius:6px;margin:8px 0;box-shadow:0 1px 2px rgba(30,33,28,.08),0 8px 16px -12px rgba(30,33,28,.4);overflow:hidden}
+details.io summary{cursor:pointer;padding:10px 12px 10px 34px;font-size:14px;min-height:40px;list-style:none;position:relative;display:flex;align-items:center}
+details.io summary::-webkit-details-marker{display:none}
+details.io summary::before{content:"";position:absolute;left:13px;top:50%;width:8px;height:8px;border-right:2px solid var(--felt);border-bottom:2px solid var(--felt);transform:translateY(-70%) rotate(-45deg);transition:transform .15s}
+details.io[open] summary::before{transform:translateY(-60%) rotate(45deg)}
+details.io summary:hover{background:var(--felt-soft)}
+details.io[open] summary{border-bottom:1px solid var(--rule)}
+details.io .body{padding:4px 12px 12px}
+details.io h3{font:400 14px/1.3 var(--sans);margin:10px 0 6px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;margin-right:6px}
+.tag.req{background:var(--felt);color:#fff}
+.tag.res{background:var(--wood);color:#2a1c08}
+.io.nocall{padding:9px 12px;font-size:14px;margin:8px 0;border:1px dashed var(--rule);border-radius:6px;color:var(--ink-2)}
+pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--paper);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre;max-width:100%}
+pre.req{border-left:4px solid var(--felt)}
+pre.res{border-left:4px solid var(--wood);background:color-mix(in srgb,var(--wood) 10%,var(--paper))}
 #iolog{contain:inline-size} /* the play track is min-content on wide screens: the raw JSON must not feed its intrinsic width */
 .lb{width:100%;border-collapse:collapse;font-size:14px}
 .lb td,.lb th{padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap}
@@ -390,7 +401,7 @@ const modeSel="player", thoughtsSel="fade"; // the page plays the real opponent 
 let lastPointer=(window.matchMedia&&matchMedia("(hover:hover)").matches)?"mouse":"touch"; // seeded from the device, then kept current by every press
 let gsiDown=false; // the Google script failed to load
 let siteBackend=null; // "native" (live Jev: play needs a sign-in) or "mock" (practice: open), learned from the leaderboard
-let ioOpen=new Set(), ioBuiltFor=-1; // which API-call entries the reader opened, and how many turns the log was last built for
+let ioOpen=new Set(), ioBuiltFor=-1, ioAuto=-1; // which API-call entries are open, how many turns the log was last built for, and the one opened automatically (the newest)
 let signinGame=null; // the game on screen when the Google button was pressed
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
 let recordBackend="mock"; try{ recordBackend=localStorage.getItem("jev-last-backend")||"mock"; }catch{}
@@ -423,7 +434,7 @@ addEventListener("resize",fitBoard);
 
 function newGame(jev){
   leaveReplay();
-  cfg=CFG[gameSel]; score=loadScore(); ioOpen=new Set(); ioBuiltFor=-1;
+  cfg=CFG[gameSel]; score=loadScore(); ioOpen=new Set(); ioBuiltFor=-1; ioAuto=-1;
   const empty=Array.from({length:cfg.size},()=>".".repeat(cfg.size));
   S={ game:gameSel, mode:modeSel, board:empty, moves:[], jev, human: jev==="O"?"X":"O", status:"playing", turns:[], last:null, pending:null, aim:null, busy:false, backend:null, captures:{X:0,O:0}, score:null, gameCounted:false,
       legal:[], sel:null, inCheck:false, result:null, lastMove:null, token:null, gameId:null, verified:false, owner:null, flip: !!cfg.chess && jev==="X" };
@@ -572,7 +583,7 @@ async function play(humanMove,localMove){
     if(d.moves.length){ S.owner=S.owner||d.owner||null; } // first write wins, like the record itself; a state query records nothing
     if(sentSession&&me&&me.session===sentSession&&d.verified&&d.moves.length&&!d.owner) signedOut("Your sign-in expired. Sign in again to keep your games."); // the server rejected the session this request carried
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
-    if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
+    if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); if(d.jev.io){ ioOpen.delete(ioAuto); ioAuto=S.turns.length-1; ioOpen.add(ioAuto); } } // the newest call opens; the one it replaces closes unless the reader opened it again
     if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(true); if(me&&S.verified) loadMyGames(); }
   }catch(e){ $("err").textContent=friendly(e.message); if(e.message==="sign in to play") openGate(); if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } }
   S.busy=false; S.pending=null; render();
@@ -633,10 +644,10 @@ function renderIO(){
     const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
     return `<details class="io" data-i="${i}"${ioOpen.has(i)?" open":""}><summary>Move ${i+1}: ${esc(t.move)} via ${esc(t.source)}, ${t.latencyMs} ms, ${esc(tokens(t))}, request ${(req.length/1024).toFixed(1)} KB</summary>
       <div class="body">
-        <h3>Request to ${esc(t.model||"Jev")} <button class="small" data-copy="req-${i}">Copy</button></h3><pre id="req-${i}">${esc(req)}</pre>
-        <h3>Response <button class="small" data-copy="res-${i}">Copy</button></h3><pre id="res-${i}">${esc(res)}</pre>
+        <h3><span><span class="tag req">Request</span>to ${esc(t.model||"Jev")}</span><button class="small" data-copy="req-${i}">Copy</button></h3><pre class="req" id="req-${i}">${esc(req)}</pre>
+        <h3><span><span class="tag res">Response</span>from ${esc(t.model||"Jev")}</span><button class="small" data-copy="res-${i}">Copy</button></h3><pre class="res" id="res-${i}">${esc(res)}</pre>
       </div></details>`;
-  }).join("");
+  }).reverse().join(""); // newest first
   for(const d of $("iolog").querySelectorAll("details.io")) d.addEventListener("toggle",()=>{ const i=+d.dataset.i; if(d.open) ioOpen.add(i); else ioOpen.delete(i); });
   for(const b of $("iolog").querySelectorAll("button[data-copy]")){
     b.addEventListener("click",async()=>{ try{ await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent="Copied"; setTimeout(()=>b.textContent="Copy",1200); }catch{} });
@@ -790,7 +801,7 @@ function render(light){
   const st=$("status"); if(st.textContent!==msg) st.textContent=msg; // a live region: only real changes are announced
   // the record chip: does this game count?
   const chip=$("recchip"); const be=S.backend;
-  if(S.status==="replay"||!be){ chip.hidden=true; }
+  if(S.status==="replay"||!be||!S.moves.length){ chip.hidden=true; } // nothing is recorded before the first move
   else { chip.hidden=false; if(be==="mock"){ chip.textContent="Practice opponent"; chip.className="chip warn"; } else if(S.verified){ chip.textContent=S.owner?`Recorded as ${S.owner}`:"Recorded"; chip.className="chip live"; } else { chip.textContent="Not recorded"; chip.className="chip"; } }
   $("backendhelp").textContent= be==="native" ? "Opponent: Jev, live. The server calls TypeSafe's Jev API for every move." : be==="mock" ? "Opponent: a practice stand-in. The server has no Jev key, so a heuristic plays instead and nothing counts for the hall of fame." : "The opponent resolves on the first move.";
   // aim + actions
