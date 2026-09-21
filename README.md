@@ -57,7 +57,8 @@ Standard chess with rules from the vendored [chess.js](https://github.com/jhlywa
 replays it every request. For every legal move code computes what it captures, whether the moved
 piece can be taken back (attacked and undefended, or by something cheaper; a king only takes an
 undefended piece), what other piece it leaves en prise, what it threatens, check, mate, castling,
-development, and ranks them. That is one ply of material sense, not search.
+development, and ranks them. Piece safety is a static exchange over every attacker and defender on the
+square (pinned pieces are treated as free to move); there is no search.
 
 - **Player**: code plays mate in one; otherwise Jev picks from the top 12 annotated moves.
 - **Assisted / Naked**: every legal move, in SAN order; questions `mate_now`, `win_material`,

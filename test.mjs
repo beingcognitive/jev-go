@@ -522,3 +522,16 @@ test("gomoku: a four-three whose forced block counters with an open four is not 
   const real = boardWith({ H8: "X", I8: "X", J9: "X", J10: "X", J11: "X", J12: "O" });
   assert.deepEqual(G.threatSets(real, "O", "X").block, ["J8"]);
 });
+
+test("chess: static exchange counts every attacker and defender (Opus verifier position)", () => {
+  // 1.d4 h6 2.Qd3 g6 3.Qh3 a6: Bxh6 is attacked by Bf8, Ng8, Rh8 and defended once by Qh3 -> loses the bishop
+  const an = C.analyzeAll(C.replay(["d4", "h6", "Qd3", "g6", "Qh3", "a6"]));
+  const bxh6 = an.find((a) => a.key === "Bxh6");
+  assert.ok(bxh6.gain < 0, `gain was ${bxh6.gain}`);
+  assert.match(bxh6.desc, /hangs the bishop \(3\): attacked by a (bishop|knight), more attackers than defenders/);
+  assert.ok(!C.truthOf(an).material.includes("Bxh6"));
+  // one defender against one attacker of equal value still counts as safe
+  const eq = C.analyzeAll(C.replay(["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6", "Nc3"]));
+  const nxe4 = eq.find((a) => a.key === "Nxe4");
+  assert.ok(nxe4.gain <= 1 && nxe4.gain >= -2, `Nxe4 gain ${nxe4.gain}`);
+});

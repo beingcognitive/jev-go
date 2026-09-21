@@ -62,14 +62,28 @@ function attackInfo(c, square, byColor) {
   }
   return { cheapest, attacker, king };
 }
-// Material a `me` piece worth `val` on `square` is likely to lose: taken for nothing if undefended,
-// taken by something cheaper if defended; a king can only take an undefended piece.
+// Values of every `color` piece bearing on `square`, cheapest first, king (0) last.
+function swapList(c, square, color) {
+  return c.attackers(square, color).map((sq) => VALUE[c.get(sq).type]).sort((x, y) => (x === 0 ? 1 : y === 0 ? -1 : x - y));
+}
+// Material a `me` piece worth `val` on `square` is likely to lose: a static exchange over every attacker
+// and defender, cheapest piece first. A king may only take once nothing defends the square any more.
+// One recapture is not enough to call a piece safe: two attackers against one defender win it outright.
+// Pinned pieces are counted as if free to move (known approximation).
+// What the side to move wins by capturing a piece worth `target` with attackers `att` against defenders `def`
+// (both cheapest first, king = 0 last). The capturer may decline, so the result is never negative.
+function see(target, att, def) {
+  if (!att.length) return 0;
+  if (att[0] === 0 && def.length) return 0;            // a king cannot capture a defended piece
+  return Math.max(0, target - see(att[0], def, att.slice(1)));
+}
 function riskOn(c, square, val, me) {
   const a = attackInfo(c, square, otherColor(me));
-  if (a.cheapest === null && !a.king) return { risk: 0, attacker: null };
-  if (!c.isAttacked(square, me)) return { risk: val, attacker: a.attacker ?? "k" };
-  if (a.cheapest === null) return { risk: 0, attacker: null };
-  return { risk: Math.max(0, val - a.cheapest), attacker: a.attacker };
+  if (a.cheapest === null && !a.king) return { risk: 0, attacker: null, defended: false };
+  const def = swapList(c, square, me);
+  if (!def.length) return { risk: val, attacker: a.attacker ?? "k", defended: false };
+  const risk = see(val, swapList(c, square, otherColor(me)), def);
+  return { risk, attacker: risk > 0 ? a.attacker ?? "k" : null, defended: true };
 }
 // After a move by `me`: the worst hanging `me` piece other than the one on `skip` (one-ply opponent reply).
 function worstHanging(c, me, skip) {
@@ -111,7 +125,9 @@ export function analyzeMove(c, m, deep = true) {
   if (check && !mate) parts.push("gives check");
   if (self.risk > 0) {
     const mover = NAME[m.promotion || m.piece];
-    parts.push(self.risk === moverVal ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[self.attacker]}, undefended` : `${mover} can be taken by a ${NAME[self.attacker]} (loses ${self.risk})`);
+    parts.push(!self.defended ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[self.attacker]}, undefended`
+      : self.risk === moverVal ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[self.attacker]}, more attackers than defenders`
+      : `${mover} can be taken by a ${NAME[self.attacker]} (loses ${self.risk})`);
   }
   if (develops) parts.push(`develops a ${NAME[m.piece]}`);
   if (other.worst > 0) parts.push(`leaves the ${NAME[other.what.type]} on ${other.what.square} en prise (-${other.worst})`);
