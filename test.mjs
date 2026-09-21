@@ -587,10 +587,87 @@ test("chess: a long game costs about the same with a token as an opening does", 
   }
   const c = C.replay(best);
   const jev = c.turn() === "w" ? "X" : "O";
-  const token = await sign(C.snapshot(c), "mock-only-secret");
+  const { sealSession } = await import("./functions/_lib/session.js");
+  const token = await sealSession({}, "chess", { id: "f".repeat(16), created: Date.now() }, best.length, C.snapshot(c));
   const t0 = performance.now();
   const r = await handleChessMove({ moves: best, humanMove: null, jev, mode: "player", state: token }, {});
   const ms = performance.now() - t0;
   assert.equal(r.status, 200, r.body.error);
   assert.ok(ms < 60 + 60, `token path took ${ms.toFixed(1)} ms`); // includes the mock's 60 ms sleep
+});
+
+// ---------------- records: sessions, store, leaderboard, replay, claim ----------------
+import { storeFor, memoryStore } from "./functions/_lib/store.js";
+import { handleLeaderboard, handleGame, handleClaim } from "./functions/_lib/records.js";
+
+test("records: a gomoku game played through session tokens is recorded, claimable and replayable", async () => {
+  const env = { TYPESAFE_API_KEY: "" }; // mock backend, memory store
+  let board = G.toRows(G.emptyBoard()), moves = [], state = null, gameId = null, status = "playing", r;
+  // play until the human wins: the human is greedy X, Jev is mock O; force a quick human win by giving X a line
+  for (let i = 0; i < 40 && status === "playing"; i++) {
+    const c = G.candidates(G.parseBoard(board), "X", "O", 1).all[0];
+    r = await handleMove({ board, moves, humanMove: c.key, jev: "O", mode: "player", state }, env);
+    assert.equal(r.status, 200, r.body.error);
+    if (r.after) await r.after();
+    assert.equal(r.body.verified, true); assert.ok(r.body.state);
+    board = r.body.board; moves = r.body.moves; state = r.body.state; gameId = r.body.gameId; status = r.body.status;
+  }
+  assert.ok(gameId);
+  const store = storeFor({});
+  const g = await store.getGame(gameId);
+  assert.equal(g.game, "gomoku"); assert.equal(g.plies, moves.length); assert.equal(g.result, status === "playing" ? null : status);
+  const turns = await store.getTurns(gameId);
+  assert.equal(turns.length, moves.length);
+  assert.ok(turns.every((t, i) => t.ply === i && Array.isArray(t.board)));
+  const replay = await handleGame({ id: gameId }, { io: "1" }, {});
+  assert.equal(replay.status, 200); assert.equal(replay.body.turns.length, moves.length);
+  assert.ok(replay.body.turns.filter((t) => t.side === "jev").every((t) => t.board && (t.source === "best" ? Array.isArray(t.heat) : true)));
+  // a tampered token is refused; a token from another game too
+  const bad = await handleMove({ board, moves, humanMove: "A1", jev: "O", state: state.slice(0, -2) + "zz" }, env);
+  assert.equal(bad.status, 400); assert.match(bad.body.error, /bad state/);
+  // claims: only a human win, once, and only through the token
+  const claim = await handleClaim({ state, name: " Kyung-Hoon <b>" }, {});
+  if (status === "human_wins") { assert.equal(claim.status, 200); assert.equal(claim.body.name, "Kyung-Hoon b"); assert.equal((await handleClaim({ state, name: "again" }, {})).status, 400); }
+  else assert.equal(claim.status, 400);
+  assert.equal((await handleClaim({ state: "nope", name: "x" }, {})).status, 400);
+});
+
+test("records: a board sent without a token is playable but never recorded", async () => {
+  const b = boardWith({ H8: "X", H9: "O" });
+  const r = await handleMove({ board: G.toRows(b), moves: ["X H8", "O H9"], humanMove: "G8", jev: "O", mode: "player" }, {});
+  assert.equal(r.status, 200); assert.equal(r.body.verified, false); assert.equal(r.body.state, null); assert.equal(r.body.gameId, null);
+  const before = (await storeFor({}).stats("gomoku")).games;
+  if (r.after) await r.after();
+  assert.equal((await storeFor({}).stats("gomoku")).games, before);
+});
+
+test("records: go and chess sessions carry the authoritative position", async () => {
+  const g1 = await handleGoMove({ moves: [], humanMove: "E5", jev: "O", mode: "player" }, {});
+  assert.equal(g1.body.verified, true); if (g1.after) await g1.after();
+  const g2 = await handleGoMove({ moves: g1.body.moves, humanMove: "D4", jev: "O", mode: "player", state: g1.body.state }, {});
+  assert.equal(g2.status, 200, g2.body.error); assert.equal(g2.body.moves.length, 4);
+  const c1 = await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player" }, {});
+  assert.equal(c1.body.verified, true); if (c1.after) await c1.after();
+  const c2 = await handleChessMove({ moves: c1.body.moves, humanMove: c1.body.legal[0].san, jev: "O", mode: "player", state: c1.body.state }, {});
+  assert.equal(c2.status, 200, c2.body.error);
+  const mismatch = await handleChessMove({ moves: [], humanMove: c1.body.legal[0].san, jev: "O", state: c1.body.state }, {});
+  assert.equal(mismatch.status, 400); assert.match(mismatch.body.error, /bad state/);
+  const turns = await storeFor({}).getTurns(c1.body.gameId);
+  assert.ok(turns.length >= 2 && turns[0].side === "human" && turns[1].side === "jev");
+});
+
+test("records: leaderboard lists only real-Jev human wins and the memory store sorts by plies", async () => {
+  const store = memoryStore();
+  const t = Date.now();
+  await store.upsertGame({ id: "a".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1.13.0", result: "human_wins", plies: 30, created_at: t, ended_at: t });
+  await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "naked", jev: "O", backend: "native", model: "jev-1.13.0", result: "human_wins", plies: 20, created_at: t, ended_at: t });
+  await store.upsertGame({ id: "c".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "mock", model: null, result: "human_wins", plies: 10, created_at: t, ended_at: t });
+  await store.upsertGame({ id: "d".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1.13.0", result: "jev_wins", plies: 25, created_at: t, ended_at: t });
+  const lb = await store.leaderboard("gomoku");
+  assert.deepEqual(lb.map((w) => w.plies), [20, 30]);
+  assert.equal(lb[0].name, "anonymous");
+  assert.deepEqual(await store.stats("gomoku"), { games: 3, jev_wins: 1, human_wins: 2, draws: 0 });
+  assert.equal((await handleLeaderboard({}, { game: "checkers" }, {})).status, 400);
+  assert.equal((await handleGame({ id: "zz" }, {}, {})).status, 400);
+  assert.equal((await handleGame({ id: "0".repeat(16) }, {}, {})).status, 404);
 });

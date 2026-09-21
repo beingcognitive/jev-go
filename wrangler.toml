@@ -1,3 +1,12 @@
 name = "jev-go"
 pages_build_output_dir = "public"
 compatibility_date = "2026-09-01"
+
+# Game records (leaderboard + replays). Create the database once, then paste its id here:
+#   npx wrangler d1 create jev-go
+#   npx wrangler d1 execute jev-go --remote --file=schema.sql
+# Without this binding the server keeps records only in memory (fine for local dev, empty on Cloudflare).
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "jev-go"
+# database_id = "PASTE-THE-ID-HERE"

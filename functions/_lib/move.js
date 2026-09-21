@@ -6,6 +6,8 @@
 
 import * as G from "./gomoku.js";
 import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode, MODES } from "./jev.js";
+import { openSession, sealSession, turnRows, record } from "./session.js";
+import { storeFor } from "./store.js";
 export { backend, normalizeMode, MODES };
 
 const RULES =
@@ -128,23 +130,41 @@ function validate(board, moves) {
 
 export async function handleMove(body, env = {}) {
   try {
-    const { board: rows, moves = [], humanMove = null, jev = "O" } = body || {};
+    const { board: rows, moves = [], humanMove = null, jev = "O", state = null } = body || {};
     const mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
     if (!Array.isArray(moves)) throw new Error("moves must be an array");
     const me = jev, opp = jev === "X" ? "O" : "X";
-    const board = G.parseBoard(rows);
+    let board = G.parseBoard(rows);
+    const { X: x0, O: o0 } = G.counts(board);
+    // A session token makes its board authoritative; without one only the empty board starts a verified game.
+    const s = await openSession(env, state, "gomoku", moves.length === 0 && x0 === 0 && o0 === 0);
+    if (s.verified && s.pos) {
+      if (s.n !== moves.length) throw new Error("bad state");
+      board = G.parseBoard(s.pos);
+    }
     validate(board, moves);
     const mv = moves.slice();
     const be = backend(env);
-    const done = (status, jevInfo) => reply(200, { ok: true, board: G.toRows(board), moves: mv, status, backend: be.kind, mode, jev: jevInfo });
+    const store = storeFor(env);
+    const startPly = mv.length;
+    let humanBoard = null, humanKey = null;
+    const done = async (status, jevInfo) => ({
+      status: 200,
+      body: { ok: true, board: G.toRows(board), moves: mv, status, backend: be.kind, mode, jev: jevInfo,
+        state: s.verified ? await sealSession(env, "gomoku", s, mv.length, G.toRows(board)) : null, gameId: s.verified ? s.id : null, verified: s.verified },
+      after: () => record(store, "gomoku", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length,
+        rows: turnRows(s.id, startPly, humanBoard, humanKey, jevInfo, G.toRows(board)) }),
+    });
 
     if (humanMove) {
       if (G.toMove(board) !== opp) throw new Error("not the human's turn");
       const p = G.fromKey(humanMove);
       if (!p || board[p.r][p.c] !== ".") throw new Error("illegal human move");
       board[p.r][p.c] = opp;
-      mv.push(`${opp} ${G.key(p.r, p.c)}`);
+      humanKey = G.key(p.r, p.c);
+      mv.push(`${opp} ${humanKey}`);
+      humanBoard = G.toRows(board);
       if (G.isWinAt(board, p.r, p.c)) return done("human_wins", null);
     }
     if (G.toMove(board) !== me) throw new Error("not Jev's turn");
@@ -161,8 +181,8 @@ export async function handleMove(body, env = {}) {
         const only = plan.pool[0];
         info = { ...base, move: only.key, source: "only-move", note: plan.oppThreatens ? `${opp} threatens; ${only.key} is the single answer` : "single candidate", latencyMs: 0, usage: null, model: null, optionCount: 1, answers: null, candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === only.key) + 1, io: null };
       } else {
-        const { state, questions, legal } = buildPlayerRequest(board, mv, me, opp, plan);
-        const r = await askJev(be, state, questions, () => mockFromScores(mockScores(board, me, opp, legal), legal, null));
+        const { state: st, questions, legal } = buildPlayerRequest(board, mv, me, opp, plan);
+        const r = await askJev(be, st, questions, () => mockFromScores(mockScores(board, me, opp, legal), legal, null));
         const best = readAnswer(r.answers.best_move);
         const ok = best.choice !== null && legal.has(best.choice);
         const move = ok ? best.choice : plan.pool[0].key;
@@ -174,8 +194,8 @@ export async function handleMove(body, env = {}) {
       }
     } else {
       const truth = G.threatSets(board, me, opp);
-      const { state, questions, legal } = buildFullRequest(board, mv, me, opp, mode);
-      const r = await askJev(be, state, questions, () =>
+      const { state: st, questions, legal } = buildFullRequest(board, mv, me, opp, mode);
+      const r = await askJev(be, st, questions, () =>
         mockFromScores(mockScores(board, me, opp, legal), legal, { win_now: { truth: truth.win, hitRate: 0.85 }, must_block: { truth: truth.block, hitRate: 0.7 } }));
       const d = decide(r.answers, truth, legal);
       info = {

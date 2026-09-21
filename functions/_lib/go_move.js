@@ -3,6 +3,8 @@
 
 import * as Go from "./go.js";
 import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode } from "./jev.js";
+import { openSession, sealSession, turnRows, record } from "./session.js";
+import { storeFor } from "./store.js";
 
 const reply = (status, body) => ({ status, body });
 const RULES =
@@ -93,17 +95,27 @@ export function buildGoPlayerRequest(st, moves, me, opp, plan) {
 
 export async function handleGoMove(body, env = {}) {
   try {
-    const { moves = [], humanMove = null, jev = "O" } = body || {};
+    const { moves = [], humanMove = null, jev = "O", state = null } = body || {};
     const mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
     if (!Array.isArray(moves) || moves.length > Go.MAX_MOVES) throw new Error(`moves must be an array of at most ${Go.MAX_MOVES} moves`);
     const me = jev, opp = Go.other(jev);
     const be = backend(env);
-    const mv = moves.slice();
+    // A session token makes its move list authoritative; without one only an empty list starts a verified game.
+    const s = await openSession(env, state, "go", moves.length === 0);
+    const mv = s.verified && Array.isArray(s.pos) ? s.pos.slice() : moves.slice();
     let st = Go.replay(mv);
+    const store = storeFor(env);
+    const startPly = mv.length;
+    let humanBoard = null;
     const ended = () => st.passes >= 2 || st.count >= Go.MAX_MOVES;
-    const done = (status, jevInfo, score = null) =>
-      reply(200, { ok: true, game: "go", moves: mv, board: Go.toRows(st.board), captures: st.captures, toMove: st.toMove, status, score, backend: be.kind, mode, jev: jevInfo });
+    const done = async (status, jevInfo, score = null) => ({
+      status: 200,
+      body: { ok: true, game: "go", moves: mv, board: Go.toRows(st.board), captures: st.captures, toMove: st.toMove, status, score, backend: be.kind, mode, jev: jevInfo,
+        state: s.verified ? await sealSession(env, "go", s, mv.length, mv) : null, gameId: s.verified ? s.id : null, verified: s.verified },
+      after: () => record(store, "go", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length,
+        rows: turnRows(s.id, startPly, humanBoard, humanMove, jevInfo, Go.toRows(st.board)) }),
+    });
     const finish = (jevInfo) => { const sc = Go.score(st.board); return done(sc.winner === me ? "jev_wins" : "human_wins", jevInfo, sc); };
     if (ended()) throw new Error("game is over");
 
@@ -111,11 +123,13 @@ export async function handleGoMove(body, env = {}) {
       if (st.toMove !== opp) throw new Error("not the human's turn");
       st = Go.applyMove(st, `${opp} ${humanMove}`);
       mv.push(`${opp} ${humanMove}`);
+      humanBoard = Go.toRows(st.board);
       if (ended()) return finish(null);
     }
     if (st.toMove !== me) throw new Error("not Jev's turn");
 
     const analyses = Go.analyzeAll(st.board, me, opp, st.history, st.last);
+    const truth = goTruth(analyses);
     const slim = (a, i) => ({ key: a.key, desc: a.desc, score: Math.round(a.score * 10) / 10, rank: i + 1 });
     let info;
     if (mode === "player") {
@@ -124,10 +138,10 @@ export async function handleGoMove(body, env = {}) {
       if (plan.forced) {
         info = { ...base, move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, latencyMs: 0, usage: null, model: null, optionCount: 0, answers: null, candidates: [], heuristicRank: null, io: null };
       } else {
-        const { state, questions, legal } = buildGoPlayerRequest(st, mv, me, opp, plan);
+        const { state: q, questions, legal } = buildGoPlayerRequest(st, mv, me, opp, plan);
         const scores = Object.fromEntries(plan.pool.map((a) => [a.key, a.score]));
         if (plan.includePass) scores.pass = 0;
-        const r = await askJev(be, state, questions, () => mockFromScores(scores, legal, null));
+        const r = await askJev(be, q, questions, () => mockFromScores(scores, legal, null));
         const best = readAnswer(r.answers.best_move);
         const ok = best.choice !== null && legal.has(best.choice);
         const move = ok ? best.choice : plan.pool[0].key;
@@ -136,15 +150,15 @@ export async function handleGoMove(body, env = {}) {
         info = {
           ...base, move, source: ok ? "best" : "fallback", note: plan.includePass ? "pass offered" : null,
           latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
-          answers: { best_move: pack(best) }, candidates, heuristicRank: move === "pass" ? null : analyses.findIndex((a) => a.key === move) + 1, io: r.io,
+          answers: { best_move: pack(best) }, candidates,
+          heuristicRank: move === "pass" ? null : analyses.findIndex((a) => a.key === move) + 1, io: r.io,
         };
       }
     } else {
-      const truth = goTruth(analyses);
-      const { state, questions, legal } = buildGoFullRequest(st, mv, me, opp, analyses, mode);
+      const { state: q, questions, legal } = buildGoFullRequest(st, mv, me, opp, analyses, mode);
       const scores = Object.fromEntries(analyses.map((a) => [a.key, a.score]));
       scores.pass = -5;
-      const r = await askJev(be, state, questions, () =>
+      const r = await askJev(be, q, questions, () =>
         mockFromScores(scores, legal, { capture_now: { truth: truth.capture, hitRate: 0.85 }, must_save: { truth: truth.save, hitRate: 0.7 } }));
       const cap = readAnswer(r.answers.capture_now), sav = readAnswer(r.answers.must_save), best = readAnswer(r.answers.best_move);
       const v = { capture: verdict(cap.choice, truth.capture), save: verdict(sav.choice, truth.save) };

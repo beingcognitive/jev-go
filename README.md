@@ -66,12 +66,36 @@ square (pinned pieces are treated as free to move); there is no search.
 - **Assisted / Naked**: every legal move, in SAN order; questions `mate_now`, `win_material`,
   `best_move`, verified before being played.
 
+## Leaderboard and replays
+
+Every verified game is recorded by the server: one row per game and one per ply, including Jev's
+top-5 probabilities, the probability it gave the move it played, verdicts, latency, tokens and the
+raw request/response. A game is verified when it was played move by move through the signed session
+token the server issues (all three games use one now), so a recorded win was produced on the server,
+not posted by a client. Games played without a key (mock) are recorded but never count.
+
+- **Leaderboard** (`GET /api/leaderboard?game=gomoku`): human wins against the real Jev, fewest
+  plies first, with the model version. Winners can claim a display name once (`POST /api/claim`).
+- **Replay** (`?replay=<id>` on the page, `GET /api/game/<id>`): step through any recorded game with
+  Jev's thoughts on every one of its moves.
+
+Storage is Cloudflare D1. Create it once and bind it (see `wrangler.toml`):
+
+```bash
+npx wrangler d1 create jev-go                                   # copy the database_id into wrangler.toml
+npx wrangler d1 execute jev-go --remote --file=schema.sql       # create the tables
+```
+
+Without the binding the server keeps records in memory only.
+
 ## Layout
 
 ```
 functions/api/move.js     Pages Function: POST /api/move (Gomoku)
 functions/api/go.js       Pages Function: POST /api/go   (Go 9×9)
 functions/api/chess.js    Pages Function: POST /api/chess
+functions/api/leaderboard.js, game/[id].js, claim.js   records API
+functions/_lib/session.js, store.js, records.js         signed sessions, D1/memory store, read cores
 functions/_lib/move.js    runtime-agnostic core (prompt build, Jev call, verify, decide)
 functions/_lib/gomoku.js  Gomoku threat engine, candidate ranking, descriptions
 functions/_lib/go.js      Go engine: groups, captures, superko, scoring, annotations

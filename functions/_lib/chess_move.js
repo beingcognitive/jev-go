@@ -3,12 +3,12 @@
 // the SAN move list is replayed from the start. X = White, O = Black.
 
 import * as C from "./chess.js";
-import { sign, verify } from "./token.js";
+import { openSession, sealSession, turnRows, record } from "./session.js";
+import { storeFor } from "./store.js";
 import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode } from "./jev.js";
 
 const reply = (status, body) => ({ status, body });
 const SAN_RE = /^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$/;
-const stateSecret = (env) => env.STATE_SECRET || env.TYPESAFE_API_KEY || "mock-only-secret";
 const RULES = "Standard chess. X is White and moves first, O is Black. Moves are in standard algebraic notation (SAN).";
 const sideName = (c) => (c === "w" ? "White" : "Black");
 
@@ -73,20 +73,34 @@ export async function handleChessMove(body, env = {}) {
     if (!moves.every((m) => typeof m === "string" && m.length <= 10 && SAN_RE.test(m))) throw new Error("bad entry in moves");
     const me = C.colorOf(jev), opp = C.otherColor(me);
     const be = backend(env);
-    const secret = stateSecret(env);
     const mv = moves.slice();
-    // A signed snapshot skips the replay; the move list is then context only (shown to Jev, not trusted).
-    const c = state !== null ? C.fromSnapshot(await verify(state, secret)) : C.replay(mv);
-    if (state !== null && C.plies(c) !== mv.length) throw new Error("bad state");
-    const done = async (status, jevInfo, extra = {}) => {
+    // A session token carries the position (FEN + repetition table) and skips the replay; the move list is
+    // then context only. Without one, only an empty list starts a verified game.
+    const s = await openSession(env, state, "chess", moves.length === 0);
+    let c;
+    if (s.verified && s.pos) {
+      if (s.n !== mv.length) throw new Error("bad state");
+      c = C.fromSnapshot(s.pos);
+    } else c = C.replay(mv);
+    const store = storeFor(env);
+    const startPly = mv.length;
+    let humanBoard = null, humanSan = null;
+    const done = async (status, jevInfo) => {
       const st = C.status(c);
-      return reply(200, {
-        ok: true, game: "chess", moves: mv, board: C.boardRows(c), fen: c.fen(), turn: c.turn(), inCheck: c.inCheck(),
-        legal: status === "playing" && c.turn() === opp ? C.slimLegal(c) : [],
-        lastMove: (() => { const h = c.history({ verbose: true }); const l = h[h.length - 1]; return l ? { san: l.san, from: l.from, to: l.to } : null; })(),
-        state: await sign(C.snapshot(c), secret),
-        status, result: st.result, backend: be.kind, mode, jev: jevInfo, ...extra,
-      });
+      const h = c.history({ verbose: true }); const l = h[h.length - 1];
+      const toSquare = (k) => (jevInfo && jevInfo.sanMap && jevInfo.sanMap[k] ? jevInfo.sanMap[k].to : k);
+      return {
+        status: 200,
+        body: {
+          ok: true, game: "chess", moves: mv, board: C.boardRows(c), fen: c.fen(), turn: c.turn(), inCheck: c.inCheck(),
+          legal: status === "playing" && c.turn() === opp ? C.slimLegal(c) : [],
+          lastMove: l ? { san: l.san, from: l.from, to: l.to } : null,
+          state: s.verified ? await sealSession(env, "chess", s, mv.length, C.snapshot(c)) : null, gameId: s.verified ? s.id : null, verified: s.verified,
+          status, result: st.result, backend: be.kind, mode, jev: jevInfo,
+        },
+        after: () => record(store, "chess", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length,
+          rows: turnRows(s.id, startPly, humanBoard, humanSan, jevInfo, C.boardRows(c), toSquare) }),
+      };
     };
     const finish = (jevInfo) => { const st = C.status(c); return done(st.winner === null ? "draw" : st.winner === me ? "jev_wins" : "human_wins", jevInfo); };
     if (C.status(c).over) throw new Error("game is over");
@@ -96,6 +110,7 @@ export async function handleChessMove(body, env = {}) {
       if (typeof humanMove !== "string" || humanMove.length > 10) throw new Error("illegal move");
       const m = C.applyMove(c, humanMove);
       mv.push(m.san);
+      humanSan = m.san; humanBoard = C.boardRows(c);
       if (C.status(c).over) return finish(null);
     } else if (c.turn() === opp) {
       return done("playing", null); // state query: the human's legal moves
@@ -112,9 +127,9 @@ export async function handleChessMove(body, env = {}) {
         if (!plan.forced.move) throw new Error("no legal move");
         info = { ...base, move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, latencyMs: 0, usage: null, model: null, optionCount: 0, answers: null, candidates: analyses.slice(0, 12).map(slim), heuristicRank: analyses.findIndex((a) => a.key === plan.forced.move) + 1, io: null };
       } else {
-        const { state, questions, legal } = buildChessPlayerRequest(c, mv, me, plan);
+        const { state: q, questions, legal } = buildChessPlayerRequest(c, mv, me, plan);
         const scores = Object.fromEntries(plan.pool.map((a) => [a.key, a.score]));
-        const r = await askJev(be, state, questions, () => mockFromScores(scores, legal, null));
+        const r = await askJev(be, q, questions, () => mockFromScores(scores, legal, null));
         const best = readAnswer(r.answers.best_move);
         const ok = best.choice !== null && legal.has(best.choice);
         const move = ok ? best.choice : plan.pool[0].key;
@@ -125,9 +140,9 @@ export async function handleChessMove(body, env = {}) {
       }
     } else {
       const truth = C.truthOf(analyses);
-      const { state, questions, legal } = buildChessFullRequest(c, mv, me, analyses, mode);
+      const { state: q, questions, legal } = buildChessFullRequest(c, mv, me, analyses, mode);
       const scores = Object.fromEntries(analyses.map((a) => [a.key, a.score]));
-      const r = await askJev(be, state, questions, () =>
+      const r = await askJev(be, q, questions, () =>
         mockFromScores(scores, legal, { mate_now: { truth: truth.mate, hitRate: 0.85 }, win_material: { truth: truth.material, hitRate: 0.7 } }));
       const mate = readAnswer(r.answers.mate_now), mat = readAnswer(r.answers.win_material), best = readAnswer(r.answers.best_move);
       const v = { mate: verdict(mate.choice, truth.mate), material: verdict(mat.choice, truth.material) };
