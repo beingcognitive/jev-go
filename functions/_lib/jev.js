@@ -1,24 +1,21 @@
-// Shared Jev conventions: backend selection, one call, raw request/response capture,
+// Shared Jev conventions: backend selection (TypeSafe native or mock), one call, raw request/response capture,
 // probability helpers, answer reading, verdicts, and the mock used when no key is set.
 const NATIVE_URL = "https://api.typesafe.ai/v1/systemone";
-const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/evaluate";
 
 export const MODES = ["player", "assisted", "naked"];
 export const normalizeMode = (mode) => (MODES.includes(mode) ? mode : "player");
 
 export function backend(env = {}) {
   if (env.TYPESAFE_API_KEY) return { kind: "native", key: env.TYPESAFE_API_KEY };
-  if (env.AI_GATEWAY_API_KEY) return { kind: "gateway", key: env.AI_GATEWAY_API_KEY };
   return { kind: "mock" };
 }
-export const modelFor = (be) => (be.kind === "native" ? "jev-latest" : be.kind === "gateway" ? "typesafe-ai/jev" : "mock-heuristic");
+export const modelFor = (be) => (be.kind === "native" ? "jev-latest" : "mock-heuristic");
 
 // Upstream numbers are the only usage values allowed through; anything else becomes null (never HTML).
 const num = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 
 async function callJev(be, payload) {
-  const url = be.kind === "native" ? NATIVE_URL : GATEWAY_URL;
-  const r = await fetch(url, {
+  const r = await fetch(NATIVE_URL, {
     method: "POST",
     headers: { authorization: `Bearer ${be.key}`, "content-type": "application/json" },
     body: JSON.stringify(payload),

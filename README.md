@@ -78,7 +78,7 @@ functions/_lib/go.js      Go engine: groups, captures, superko, scoring, annotat
 functions/_lib/go_move.js Go handler core
 functions/_lib/chess.js   chess annotations on top of vendored chess.js
 functions/_lib/chess_move.js chess handler core
-functions/_lib/jev.js     shared Jev transport (native / Vercel Gateway / mock)
+functions/_lib/jev.js     shared Jev transport (TypeSafe API, or a mock when no key is set)
 public/index.html         the page
 dev.mjs                   plain Node dev server (no wrangler needed)
 test.mjs                  node:test suite
@@ -87,9 +87,9 @@ wrangler.toml             Pages project config
 
 ## Backend selection
 
-`TYPESAFE_API_KEY` → TypeSafe native `POST https://api.typesafe.ai/v1/systemone`, model `jev-latest`.
-`AI_GATEWAY_API_KEY` (only if the first is empty) → Vercel AI Gateway, model `typesafe-ai/jev`.
-Neither → a heuristic mock, shown as a `mock` badge on the page.
+With `TYPESAFE_API_KEY` set, every move is one `POST https://api.typesafe.ai/v1/systemone` with model
+`jev-latest`. Without it the server plays a heuristic stand-in and the page shows a `mock` badge, so the
+app runs locally with no key. `STATE_SECRET` optionally signs the chess state tokens; it defaults to the API key.
 
 ## Run locally
 

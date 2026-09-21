@@ -43,10 +43,10 @@ export const goTruth = (analyses) => ({
 const byPosition = (analyses) => [...analyses].sort((a, b) => a.r - b.r || a.c - b.c);
 
 // naked / assisted: every legal point plus pass, in board order (never in heuristic order); three questions.
-export function buildGoFullRequest(st, moves, me, opp, analyses, mode, nullOk = true) {
+export function buildGoFullRequest(st, moves, me, opp, analyses, mode) {
   const points = {};
-  for (const a of byPosition(analyses)) points[a.key] = mode === "assisted" ? a.desc : nullOk ? null : a.key;
-  const criteria = { ...points, pass: mode === "assisted" ? Go.PASS_DESC(opp) : nullOk ? null : "pass" };
+  for (const a of byPosition(analyses)) points[a.key] = mode === "assisted" ? a.desc : null;
+  const criteria = { ...points, pass: mode === "assisted" ? Go.PASS_DESC(opp) : null };
   const questions = {
     capture_now: {
       type: "choice",
@@ -141,7 +141,7 @@ export async function handleGoMove(body, env = {}) {
       }
     } else {
       const truth = goTruth(analyses);
-      const { state, questions, legal } = buildGoFullRequest(st, mv, me, opp, analyses, mode, be.kind !== "gateway");
+      const { state, questions, legal } = buildGoFullRequest(st, mv, me, opp, analyses, mode);
       const scores = Object.fromEntries(analyses.map((a) => [a.key, a.score]));
       scores.pass = -5;
       const r = await askJev(be, state, questions, () =>

@@ -8,7 +8,7 @@ import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, norm
 
 const reply = (status, body) => ({ status, body });
 const SAN_RE = /^(O-O(-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](=[QRBN])?)[+#]?$/;
-const stateSecret = (env) => env.STATE_SECRET || env.TYPESAFE_API_KEY || env.AI_GATEWAY_API_KEY || "mock-only-secret";
+const stateSecret = (env) => env.STATE_SECRET || env.TYPESAFE_API_KEY || "mock-only-secret";
 const RULES = "Standard chess. X is White and moves first, O is Black. Moves are in standard algebraic notation (SAN).";
 const sideName = (c) => (c === "w" ? "White" : "Black");
 
@@ -24,10 +24,10 @@ function baseState(c, moves, me, hints = true) {
 }
 
 // naked / assisted: every legal move (SAN) plus three questions.
-export function buildChessFullRequest(c, moves, me, analyses, mode, nullOk = true) {
+export function buildChessFullRequest(c, moves, me, analyses, mode) {
   const ordered = [...analyses].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   const points = {};
-  for (const a of ordered) points[a.key] = mode === "assisted" ? a.desc : nullOk ? null : a.key;
+  for (const a of ordered) points[a.key] = mode === "assisted" ? a.desc : null;
   const opp = sideName(C.otherColor(me));
   const questions = {
     mate_now: { type: "choice", instructions: `The move that delivers checkmate. Choose none if no legal move checkmates.`, criteria: { none: "No move checkmates.", ...points } },
@@ -125,7 +125,7 @@ export async function handleChessMove(body, env = {}) {
       }
     } else {
       const truth = C.truthOf(analyses);
-      const { state, questions, legal } = buildChessFullRequest(c, mv, me, analyses, mode, be.kind !== "gateway");
+      const { state, questions, legal } = buildChessFullRequest(c, mv, me, analyses, mode);
       const scores = Object.fromEntries(analyses.map((a) => [a.key, a.score]));
       const r = await askJev(be, state, questions, () =>
         mockFromScores(scores, legal, { mate_now: { truth: truth.mate, hitRate: 0.85 }, win_material: { truth: truth.material, hitRate: 0.7 } }));

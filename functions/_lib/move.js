@@ -18,10 +18,10 @@ function baseState(board, moves, me) {
 }
 
 // naked / assisted: every empty point, three questions.
-export function buildFullRequest(board, moves, me, opp, mode, nullOk = true) {
+export function buildFullRequest(board, moves, me, opp, mode) {
   const criteria = {};
   for (const p of G.emptyPoints(board)) {
-    criteria[p.key] = mode === "assisted" ? G.describe(board, p.r, p.c, me, opp) : nullOk ? null : p.key;
+    criteria[p.key] = mode === "assisted" ? G.describe(board, p.r, p.c, me, opp) : null;
   }
   const withNone = { none: "No such point exists.", ...criteria };
   const questions = {
@@ -174,7 +174,7 @@ export async function handleMove(body, env = {}) {
       }
     } else {
       const truth = G.threatSets(board, me, opp);
-      const { state, questions, legal } = buildFullRequest(board, mv, me, opp, mode, be.kind !== "gateway");
+      const { state, questions, legal } = buildFullRequest(board, mv, me, opp, mode);
       const r = await askJev(be, state, questions, () =>
         mockFromScores(mockScores(board, me, opp, legal), legal, { win_now: { truth: truth.win, hitRate: 0.85 }, must_block: { truth: truth.block, hitRate: 0.7 } }));
       const d = decide(r.answers, truth, legal);

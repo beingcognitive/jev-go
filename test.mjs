@@ -65,7 +65,6 @@ test("gomoku: buildFullRequest naked: every empty once, null descriptions, no hi
   assert.ok(Object.keys(questions.win_now.criteria).length <= 255);
   assert.equal(questions.best_move.criteria.F8, null);
   assert.equal("threats" in state, false);
-  assert.equal(buildFullRequest(b, [], "O", "X", "naked", false).questions.best_move.criteria.F8, "F8");
   const empty = buildFullRequest(G.emptyBoard(), [], "O", "X", "naked", true);
   assert.equal(Object.keys(empty.questions.win_now.criteria).length, 226);
 });
@@ -149,8 +148,7 @@ test("jev: mockFromScores keeps claim questions normalised and pass-free", () =>
 test("jev: normalizeMode and backend order", () => {
   assert.equal(J.normalizeMode(undefined), "player"); assert.equal(J.normalizeMode("naked"), "naked"); assert.equal(J.normalizeMode("bogus"), "player");
   assert.equal(J.backend({}).kind, "mock");
-  assert.equal(J.backend({ AI_GATEWAY_API_KEY: "g" }).kind, "gateway");
-  assert.equal(J.backend({ TYPESAFE_API_KEY: "t", AI_GATEWAY_API_KEY: "g" }).kind, "native");
+  assert.equal(J.backend({ TYPESAFE_API_KEY: "t" }).kind, "native");
 });
 
 test("gomoku: decide priority, five-first block, fallback and no_answer", () => {
@@ -296,7 +294,7 @@ test("go: annotations detect capture, save (adjacent and by capturing the attack
   assert.equal(Go.analyzeMove(goBoard({ B9: "O", A8: "O" }), ...gat("A9"), "X", "O", null, null), null);
 });
 
-test("go: full request lists every legal point plus pass in board order; naked has no hints; gateway shape", () => {
+test("go: full request lists every legal point plus pass in board order; naked has no hints", () => {
   const st = Go.replay(["X E5", "O D5", "X D4", "O pass", "X C5"]);
   const analyses = Go.analyzeAll(st.board, "O", "X", st.history, st.last);
   const full = buildGoFullRequest(st, [], "O", "X", analyses, "naked", true);
@@ -307,8 +305,6 @@ test("go: full request lists every legal point plus pass in board order; naked h
   assert.ok(!Object.keys(full.state).some((k) => k.endsWith("_groups_in_atari")));
   const assisted = buildGoFullRequest(st, [], "O", "X", analyses, "assisted", true);
   assert.deepEqual(assisted.state.O_groups_in_atari, ["1 stone at D5"]);
-  const gw = buildGoFullRequest(st, [], "O", "X", analyses, "naked", false);
-  assert.equal(gw.questions.best_move.criteria.pass, "pass"); assert.equal(gw.questions.best_move.criteria.A9, "A9");
 });
 
 test("go: goPlayerPlan pool bounds and the single-legal-point rule", () => {
