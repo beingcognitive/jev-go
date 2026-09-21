@@ -68,42 +68,37 @@ export function tryMove(board, r, c, color, history) {
   return { board: b, captured, capturedKeys };
 }
 
-// Replay a move list ("X D4", "O pass", ...) from the empty board, validating every move.
-export function replay(moves) {
-  if (!Array.isArray(moves)) throw new Error("moves must be an array");
-  let board = emptyBoard();
-  const history = new Set([hash(board)]);
-  const captures = { X: 0, O: 0 };
-  let passes = 0, color = "X", last = null;
-  for (let i = 0; i < moves.length; i++) {
-    const m = MOVE_RE.exec(moves[i] || "");
-    if (!m) throw new Error(`bad move ${i}: ${moves[i]}`);
-    if (m[1] !== color) throw new Error(`move ${i} out of turn`);
-    if (m[2] === "pass") passes++;
-    else {
-      const p = fromKey(m[2]);
-      if (!p) throw new Error(`bad point ${m[2]}`);
-      const t = tryMove(board, p.r, p.c, color, history);
-      if (t.error) throw new Error(`move ${i} ${m[2]} illegal: ${t.error}`);
-      board = t.board;
-      captures[color] += t.captured;
-      passes = 0;
-    }
-    history.add(hash(board));
-    last = m[2];
-    color = other(color);
+export const initialState = () => {
+  const board = emptyBoard();
+  return { board, history: new Set([hash(board)]), captures: { X: 0, O: 0 }, passes: 0, toMove: "X", last: null, count: 0 };
+};
+
+// Apply one move ("X D4" | "O pass") to a state, validating it. Returns a new state; `history` is shared and extended.
+export function applyMove(st, moveStr) {
+  if (st.passes >= 2 || st.count >= MAX_MOVES) throw new Error("game is over");
+  const m = MOVE_RE.exec(moveStr || "");
+  if (!m) throw new Error(`bad move ${st.count}: ${String(moveStr).slice(0, 12)}`);
+  if (m[1] !== st.toMove) throw new Error(`move ${st.count} out of turn`);
+  let board = st.board, captured = 0, passes = st.passes + 1;
+  if (m[2] !== "pass") {
+    const p = fromKey(m[2]);
+    if (!p) throw new Error(`bad point ${m[2]}`);
+    const t = tryMove(st.board, p.r, p.c, m[1], st.history);
+    if (t.error) throw new Error(`move ${st.count} ${m[2]} illegal: ${t.error}`);
+    board = t.board; captured = t.captured; passes = 0;
   }
-  return { board, history, captures, passes, toMove: color, last, count: moves.length };
+  st.history.add(hash(board));
+  const captures = { ...st.captures, [m[1]]: st.captures[m[1]] + captured };
+  return { board, history: st.history, captures, passes, toMove: other(m[1]), last: m[2], count: st.count + 1 };
 }
 
-export function legalPoints(board, color, history) {
-  const out = [];
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    if (board[r][c] !== ".") continue;
-    const t = tryMove(board, r, c, color, history);
-    if (!t.error) out.push({ r, c, key: key(r, c), result: t });
-  }
-  return out;
+// Replay a move list from the empty board, validating every move. Positional superko.
+export function replay(moves) {
+  if (!Array.isArray(moves)) throw new Error("moves must be an array");
+  if (moves.length > MAX_MOVES) throw new Error(`too many moves (max ${MAX_MOVES})`);
+  let st = initialState();
+  for (const mv of moves) st = applyMove(st, mv);
+  return st;
 }
 
 // Area scoring. Empty regions bordered by a single color count for that color. Dead stones are not removed.
@@ -153,8 +148,18 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   }
   const own = group(after, r, c);
   const libsAfter = own.liberties.size;
+  // Any own group that was in atari and is out of it afterwards, including ones rescued by
+  // capturing the attacker, which need not touch (r,c).
   let saved = 0;
-  for (const g of ownBefore) if (g.liberties.size === 1) { const [a, b] = g.stones[0]; if (group(after, a, b).liberties.size >= 2) saved += g.stones.length; }
+  const seenSaved = new Set();
+  for (let x = 0; x < SIZE; x++) for (let y = 0; y < SIZE; y++) {
+    if (board[x][y] !== me || seenSaved.has(x * SIZE + y)) continue;
+    const g = group(board, x, y);
+    for (const [a, b] of g.stones) seenSaved.add(a * SIZE + b);
+    if (g.liberties.size !== 1) continue;
+    const [a, b] = g.stones[0];
+    if (after[a][b] === me && group(after, a, b).liberties.size >= 2) saved += g.stones.length;
+  }
   let atari = 0, atariGroups = 0;
   const seenAfter = new Set();
   for (const [x, y] of N4(r, c)) {

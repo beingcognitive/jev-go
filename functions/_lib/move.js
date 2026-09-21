@@ -1,19 +1,17 @@
-// Runtime-agnostic core: handleMove(body, env) -> { status, body }.
+// Runtime-agnostic core for Gomoku: handleMove(body, env) -> { status, body }.
 // Modes:
 //   player   code does perception + forced tactics; Jev chooses among ranked, annotated candidates
 //   assisted every empty point is an option, annotated with exact line facts; Jev decides everything
 //   naked    every empty point is an option with no description; Jev decides everything (measurement)
 
 import * as G from "./gomoku.js";
-
-import { backend, ask as askJev, mockFromScores, readAnswer as readAnswerShared, pack, verdict } from "./jev.js";
-export { backend };
+import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode, MODES } from "./jev.js";
+export { backend, normalizeMode, MODES };
 
 const RULES =
   "Gomoku on a 15x15 board. Five in a row wins. X is black, O is white, . is empty. " +
   "Coordinates are column letter A-O then row number 1-15.";
-export const MODES = ["player", "assisted", "naked"];
-
+const MOVE_RE = /^[XO] [A-O](?:[1-9]|1[0-5])$/;
 
 function baseState(board, moves, me) {
   return { game: RULES, you_are: me, to_move: me, board: G.render(board).split("\n"), recent_moves: moves.slice(-12) };
@@ -35,8 +33,8 @@ export function buildFullRequest(board, moves, me, opp, mode, nullOk = true) {
     must_block: {
       type: "choice",
       instructions:
-        `The empty point where ${opp} would make five in a row, or an open four, on ${opp}'s next move ` +
-        `if ${me} does not occupy it now. Choose none if ${opp} has no such threat.`,
+        `The empty point ${me} must occupy now to stop ${opp} winning: where ${opp} would make five in a row on ${opp}'s next move, ` +
+        `or, only when ${opp} has no such point, where ${opp} would make an open four. Choose none if ${opp} has no such threat.`,
       criteria: withNone,
     },
     best_move: { type: "choice", instructions: `The strongest move for ${me} in this position to win the game.`, criteria },
@@ -57,6 +55,7 @@ function threatSummary(cands, me, opp) {
 }
 
 // player: code decides forced tactics; otherwise a ranked candidate pool for Jev.
+// Candidates that leave the opponent an unstoppable threat are dropped unless they are a safe forcing move.
 export function playerPlan(board, me, opp, max = 12) {
   const winPts = G.fivePointsFor(board, me);
   if (winPts.length) return { forced: { move: winPts[0], source: "forced-win", note: null } };
@@ -66,13 +65,9 @@ export function playerPlan(board, me, opp, max = 12) {
   const cands = G.candidates(board, me, opp, max);
   const of = cands.all.find((c) => c.me.cls === "open_four");
   if (of) return { forced: { move: of.key, source: "open-four", note: null }, cands };
-  const oppThreatens = cands.all.some((c) => c.opp.cls === "open_four");
-  let pool = cands.top;
-  if (oppThreatens) {
-    const safe = cands.all.filter((c) => c.danger !== "open_four" || c.forcing);
-    if (safe.length) pool = safe.slice(0, max);
-  }
-  return { pool, cands, oppThreatens };
+  const safe = cands.all.filter((c) => !c.danger || c.forcing);
+  const pool = (safe.length ? safe : cands.all).slice(0, max);
+  return { pool, cands, oppThreatens: safe.length < cands.all.length };
 }
 
 export function buildPlayerRequest(board, moves, me, opp, plan) {
@@ -91,38 +86,20 @@ export function buildPlayerRequest(board, moves, me, opp, plan) {
   return { state, questions, legal: new Set(Object.keys(criteria)) };
 }
 
-// Heuristic stand-in when no key is configured. Imperfect on purpose, so the UI shows misses too.
-export function mockAnswers(board, me, opp, legal, truth, rng = Math.random, questions = null) {
-  const pts = G.emptyPoints(board).filter((p) => legal.has(p.key));
-  const scores = pts.map((p) => {
+// Heuristic scores for the mock (no key configured).
+function mockScores(board, me, opp, legal) {
+  const scores = {};
+  for (const p of G.emptyPoints(board)) {
+    if (!legal.has(p.key)) continue;
     const m = G.lineInfo(board, p.r, p.c, me), o = G.lineInfo(board, p.r, p.c, opp);
-    const s =
-      Math.max(...m.map((l) => l.len * (l.open ? 1.6 : 1))) +
-      0.85 * Math.max(...o.map((l) => l.len * (l.open ? 1.6 : 1))) +
-      rng() * 0.6;
-    return [p.key, s];
-  });
-  const max = Math.max(...scores.map((s) => s[1]));
-  const exps = scores.map(([k, s]) => [k, Math.exp((s - max) * 1.8)]);
-  const z = exps.reduce((a, [, v]) => a + v, 0);
-  const best = Object.fromEntries(exps.map(([k, v]) => [k, v / z]));
-  const out = { best_move: { type: "choice", choice: G.argmax(best), probabilities: best } };
-  if (!questions || questions.win_now) {
-    const peaked = (choice) => {
-      const probs = {};
-      for (const k of legal) probs[k] = 0.1 / legal.size;
-      probs.none = 0.1 / (legal.size + 1);
-      probs[choice] = 0.9;
-      return { type: "choice", choice, probabilities: probs };
-    };
-    const pick = (arr, hitRate) => (arr.length && rng() < hitRate ? arr[Math.floor(rng() * arr.length)] : "none");
-    out.win_now = peaked(pick(truth.win, 0.85));
-    out.must_block = peaked(pick(truth.block, 0.7));
+    scores[p.key] =
+      Math.max(...m.map((l) => l.len * (l.open ? 1.6 : 1))) * 3 +
+      0.85 * Math.max(...o.map((l) => l.len * (l.open ? 1.6 : 1))) * 3 +
+      Math.random() * 1.5;
   }
-  return out;
+  return scores;
 }
 
-const readAnswer = (a) => readAnswerShared(a, G.topK, G.confidenceFrom, G.argmax);
 // naked/assisted priority: verified win, else verified block, else best_move. A wrong claim falls through.
 export function decide(answers, truth, legal) {
   const win = readAnswer(answers.win_now);
@@ -132,30 +109,31 @@ export function decide(answers, truth, legal) {
   let move, source;
   if (win.choice !== "none" && truth.win.includes(win.choice)) { move = win.choice; source = "win"; }
   else if (block.choice !== "none" && truth.block.includes(block.choice)) { move = block.choice; source = "block"; }
-  else if (legal.has(best.choice)) { move = best.choice; source = "best"; }
+  else if (best.choice !== null && legal.has(best.choice)) { move = best.choice; source = "best"; }
   else { move = [...legal][0]; source = "fallback"; }
   return { move, source, verdict: v, win, block, best };
 }
 
 const reply = (status, body) => ({ status, body });
-export function normalizeMode(mode, assist) {
-  if (MODES.includes(mode)) return mode;
-  if (assist === true) return "assisted";
-  if (assist === false) return "naked";
-  return "player";
-}
 
-const ask = (be, board, me, opp, legal, truth, state, questions) =>
-  askJev(be, state, questions, () => mockAnswers(board, me, opp, legal, truth, Math.random, questions));
+// The client sends both the board and the move list; the board is the position, the list is context.
+function validate(board, moves) {
+  if (moves.length > G.SIZE * G.SIZE) throw new Error("too many moves");
+  if (!moves.every((m) => typeof m === "string" && MOVE_RE.test(m))) throw new Error("bad entry in moves");
+  const { X, O } = G.counts(board);
+  if (X !== O && X !== O + 1) throw new Error("impossible stone counts");
+  for (let r = 0; r < G.SIZE; r++) for (let c = 0; c < G.SIZE; c++) if (board[r][c] !== "." && G.isWinAt(board, r, c)) throw new Error("game is over");
+}
 
 export async function handleMove(body, env = {}) {
   try {
     const { board: rows, moves = [], humanMove = null, jev = "O" } = body || {};
-    const mode = normalizeMode(body && body.mode, body && body.assist);
+    const mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
     if (!Array.isArray(moves)) throw new Error("moves must be an array");
     const me = jev, opp = jev === "X" ? "O" : "X";
     const board = G.parseBoard(rows);
+    validate(board, moves);
     const mv = moves.slice();
     const be = backend(env);
     const done = (status, jevInfo) => reply(200, { ok: true, board: G.toRows(board), moves: mv, status, backend: be.kind, mode, jev: jevInfo });
@@ -167,49 +145,41 @@ export async function handleMove(body, env = {}) {
       board[p.r][p.c] = opp;
       mv.push(`${opp} ${humanMove}`);
       if (G.isWinAt(board, p.r, p.c)) return done("human_wins", null);
-      if (G.emptyPoints(board).length === 0) return done("draw", null);
     }
     if (G.toMove(board) !== me) throw new Error("not Jev's turn");
+    if (G.emptyPoints(board).length === 0) return done("draw", null);
 
-    const truth = G.threatSets(board, me, opp);
     let info;
     if (mode === "player") {
       const plan = playerPlan(board, me, opp);
       const slim = (c, i) => ({ key: c.key, desc: c.desc, score: Math.round(c.score), rank: i + 1 });
+      const base = { mode, truth: null, verdict: null };
       if (plan.forced) {
-        info = {
-          move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, mode,
-          latencyMs: 0, usage: null, model: null, optionCount: 0, truth, verdict: null, answers: null,
-          candidates: plan.cands ? plan.cands.top.map(slim) : [], heuristicRank: null, io: null,
-        };
+        info = { ...base, move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, latencyMs: 0, usage: null, model: null, optionCount: 0, answers: null, candidates: plan.cands ? plan.cands.top.map(slim) : [], heuristicRank: null, io: null };
       } else if (plan.pool.length < 2) {
         const only = plan.pool[0];
-        info = {
-          move: only.key, source: "only-move", note: plan.oppThreatens ? `${opp} threatens an open four; ${only.key} is the single answer` : "single candidate", mode,
-          latencyMs: 0, usage: null, model: null, optionCount: 1, truth, verdict: null, answers: null,
-          candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === only.key) + 1, io: null,
-        };
+        info = { ...base, move: only.key, source: "only-move", note: plan.oppThreatens ? `${opp} threatens; ${only.key} is the single answer` : "single candidate", latencyMs: 0, usage: null, model: null, optionCount: 1, answers: null, candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === only.key) + 1, io: null };
       } else {
         const { state, questions, legal } = buildPlayerRequest(board, mv, me, opp, plan);
-        const r = await ask(be, board, me, opp, legal, truth, state, questions);
+        const r = await askJev(be, state, questions, () => mockFromScores(mockScores(board, me, opp, legal), legal, null));
         const best = readAnswer(r.answers.best_move);
-        const move = legal.has(best.choice) ? best.choice : plan.pool[0].key;
+        const ok = best.choice !== null && legal.has(best.choice);
+        const move = ok ? best.choice : plan.pool[0].key;
         info = {
-          move, source: legal.has(best.choice) ? "best" : "fallback", note: plan.oppThreatens ? `${opp} threatens an open four; pool restricted to answers` : null, mode,
-          latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size, truth, verdict: null,
-          answers: { best_move: pack(best) },
-          candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === move) + 1, io: r.io,
+          ...base, move, source: ok ? "best" : "fallback", note: plan.oppThreatens ? `${opp} threatens; pool restricted to answers` : null,
+          latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
+          answers: { best_move: pack(best) }, candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === move) + 1, io: r.io,
         };
       }
     } else {
+      const truth = G.threatSets(board, me, opp);
       const { state, questions, legal } = buildFullRequest(board, mv, me, opp, mode, be.kind !== "gateway");
-      const r = await ask(be, board, me, opp, legal, truth, state, questions);
+      const r = await askJev(be, state, questions, () =>
+        mockFromScores(mockScores(board, me, opp, legal), legal, { win_now: { truth: truth.win, hitRate: 0.85 }, must_block: { truth: truth.block, hitRate: 0.7 } }));
       const d = decide(r.answers, truth, legal);
       info = {
-        move: d.move, source: d.source, note: null, mode,
-        latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size, truth, verdict: d.verdict,
-        answers: { win_now: pack(d.win), must_block: pack(d.block), best_move: pack(d.best) },
-        candidates: [], heuristicRank: null, io: r.io,
+        mode, move: d.move, source: d.source, note: null, latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size, truth, verdict: d.verdict,
+        answers: { win_now: pack(d.win), must_block: pack(d.block), best_move: pack(d.best) }, candidates: [], heuristicRank: null, io: r.io,
       };
     }
 

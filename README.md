@@ -98,3 +98,36 @@ in mock mode.
 Jev bills input only, $0.042 per million tokens. A move with all ~200 options is roughly
 7,500 input tokens, about $0.0003, so a full game is under a cent. If you want it cheaper or
 want Jev to see fewer distractors, prune the option set to points within two of any stone.
+
+## Review record
+
+**Round 1 (2026-09-21), 1+3+3 adversarial fan-out on `093ce73`:** main self-review, then the same
+prompt to Codex ×3 (gpt-6-astra, read-only) and Opus ×3 (read-only). The three Codex runs converged
+on one identical set of ten findings; the three Opus runs each added independent ones.
+
+| Finding | C1 | C2 | C3 | O1 | O2 | O3 | Decision |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|---|
+| Gomoku threats credited to stones that take no part in them (`fivePointsDir` not anchored) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | applied: measure the run through the analysed stone (2 lines); negative tests added |
+| Go `must_save` truth misses rescue by capturing a non-adjacent attacker | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | applied: any own group in atari before and not after counts |
+| Upstream `usage` strings reach `innerHTML` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | applied: numbers only at the transport boundary, plus `esc()` at the three sinks |
+| Go replays an unbounded / already-finished move list | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | applied: cap at 200 before replay; a move after two passes is rejected |
+| Gomoku trusts any client board and moves list | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | applied: move-entry regex, length bound, stone-count parity, finished-board rejection, draw on a full board (full replay-and-compare left as backlog) |
+| Go naked mode leaks the heuristic ranking through option order | ✓ | ✓ | ✓ | | | | applied: options in board order |
+| `capture_now` asks for "the most" but truth accepts any capture | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | applied by loosening the question (Jev cannot compare counts reliably); the tighten-the-truth variant (O1, O3) rejected |
+| Mock claim probabilities not normalised, `pass` leaks into claim questions | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | applied inside the single shared mock |
+| Forcing-move exemption admits a losing move (opponent's forced reply makes an open four) | ✓ | ✓ | ✓ | | | | applied after own verification: a forcing move stays only if the opponent's forced reply is not itself unstoppable; regression test with the reviewers' position |
+| Go single-legal-point shortcut bypasses the pass policy | ✓ | ✓ | ✓ | | | ✓ | applied (O3 variant: no call only when pass is not on offer) |
+| A verified open-four "block" is played while the opponent already has a five | | | | ✓ | ✓ | | applied: block truth is the five points whenever a five is live; question reworded |
+| Player mode blind to double-four / four-three forks | | | | ✓ | | | applied after own verification: the danger check uses the one classifier with an unstoppable set |
+| All-time record blends mock and real Jev games | | | | | | ✓ | applied: record keyed by backend, panel labelled |
+| A question the upstream omits is graded a false claim at confidence 1 | | | | | ✓ | | applied: `no_answer` verdict, confidence 0 |
+| Full Gomoku board throws a TypeError | | | | | ✓ | ✓ | applied: draw check before planning |
+| [accretion] danger score penalties are no-ops; `danger === "five"` unreachable; `oppThreatens` gate is identity | | | | ✓ | ✓ | ✓ | applied: penalties deleted, danger is a boolean from `analyzeMove`, filter unconditional |
+| [accretion] two mock generators; `readAnswer` dependency injection; Go imports the Gomoku engine | | | | ✓ | ✓ | ✓ | applied: one mock, probability helpers moved to `jev.js`, Go no longer imports `gomoku.js` |
+| [accretion] Go validates the human move twice and replays three times per request | ✓ | ✓ | ✓ | ✓ | ✓ | | applied: `applyMove` fold, one replay per request |
+| [accretion] two identical Pages adapters; dead exports (`legalPoints`, `makesOpenThree`, `assist`) | | | | ✓ | ✓ | ✓ | applied |
+| `includePass` third clause (near the move cap) is decorative | | | | | ✓ | | backlog: kept, harmless |
+| Page has no automated coverage | | | | ✓ | ✓ | ✓ | backlog: no DOM test runner in this repo |
+
+Codex's P1 severities were recalibrated to P2 where the failure needed a crafted request. Round 2
+("fix the fix") ran a reduced fan-out on the fix diff only; see the commit message for its result.

@@ -1,12 +1,9 @@
 // Runtime-agnostic core for 9x9 Go: handleGoMove(body, env) -> { status, body }.
-// The move list is the source of truth; every request replays it (positional superko needs the history).
+// The move list is the source of truth; it is replayed once per request (positional superko needs the history).
 
 import * as Go from "./go.js";
-import * as G from "./gomoku.js";
-import { backend, ask as askJev, mockFromScores, readAnswer as readAnswerShared, pack, verdict } from "./jev.js";
-import { normalizeMode } from "./move.js";
+import { backend, ask as askJev, mockFromScores, readAnswer, pack, verdict, normalizeMode } from "./jev.js";
 
-const readAnswer = (a) => readAnswerShared(a, G.topK, G.confidenceFrom, G.argmax);
 const reply = (status, body) => ({ status, body });
 const RULES =
   `Go on a 9x9 board. X is black and moves first, O is white. Coordinates are column letter A-J (there is no I) ` +
@@ -43,15 +40,17 @@ export const goTruth = (analyses) => ({
   save: analyses.filter((a) => a.saved > 0).map((a) => a.key),
 });
 
-// naked / assisted: every legal point plus pass; three questions.
+const byPosition = (analyses) => [...analyses].sort((a, b) => a.r - b.r || a.c - b.c);
+
+// naked / assisted: every legal point plus pass, in board order (never in heuristic order); three questions.
 export function buildGoFullRequest(st, moves, me, opp, analyses, mode, nullOk = true) {
   const points = {};
-  for (const a of analyses) points[a.key] = mode === "assisted" ? a.desc : nullOk ? null : a.key;
+  for (const a of byPosition(analyses)) points[a.key] = mode === "assisted" ? a.desc : nullOk ? null : a.key;
   const criteria = { ...points, pass: mode === "assisted" ? Go.PASS_DESC(opp) : nullOk ? null : "pass" };
   const questions = {
     capture_now: {
       type: "choice",
-      instructions: `The point where ${me} captures the most ${opp} stones with this move. Choose none if no ${me} move captures anything.`,
+      instructions: `A point where ${me} captures one or more ${opp} stones with this move. Choose none if no ${me} move captures anything.`,
       criteria: { none: "No move captures.", ...points },
     },
     must_save: {
@@ -66,12 +65,14 @@ export function buildGoFullRequest(st, moves, me, opp, analyses, mode, nullOk = 
   return { state: baseState(st, moves, me, opp, mode !== "naked"), questions, legal: new Set(Object.keys(criteria)) };
 }
 
-// player: code filters and ranks; Jev picks from the pool.
+// player: code filters and ranks; Jev picks from the pool. Pass is offered when the opponent just passed,
+// when nothing scores, or near the move cap. A single legal point is played without a call only when pass is not on offer.
 export function goPlayerPlan(st, me, opp, analyses, max = 12) {
   if (!analyses.length) return { forced: { move: "pass", source: "forced-pass", note: "no legal move" } };
-  if (analyses.length === 1) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
   const pool = analyses.slice(0, max);
   const includePass = st.last === "pass" || pool[0].score <= 1 || st.count >= Go.MAX_MOVES - 10;
+  if (analyses.length === 1 && !includePass) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
+  if (analyses.length === 1 && analyses[0].score <= 0) return { forced: { move: "pass", source: "forced-pass", note: "only legal move is worse than passing" } };
   return { pool, includePass, all: analyses };
 }
 export function buildGoPlayerRequest(st, moves, me, opp, plan) {
@@ -95,6 +96,7 @@ export async function handleGoMove(body, env = {}) {
     const { moves = [], humanMove = null, jev = "O" } = body || {};
     const mode = normalizeMode(body && body.mode);
     if (jev !== "X" && jev !== "O") throw new Error("jev must be X or O");
+    if (!Array.isArray(moves) || moves.length > Go.MAX_MOVES) throw new Error(`moves must be an array of at most ${Go.MAX_MOVES} moves`);
     const me = jev, opp = Go.other(jev);
     const be = backend(env);
     const mv = moves.slice();
@@ -107,44 +109,38 @@ export async function handleGoMove(body, env = {}) {
 
     if (humanMove) {
       if (st.toMove !== opp) throw new Error("not the human's turn");
-      if (humanMove !== "pass") {
-        const p = Go.fromKey(humanMove);
-        if (!p) throw new Error("bad point");
-        const t = Go.tryMove(st.board, p.r, p.c, opp, st.history);
-        if (t.error) throw new Error(`illegal move: ${t.error}`);
-      }
+      st = Go.applyMove(st, `${opp} ${humanMove}`);
       mv.push(`${opp} ${humanMove}`);
-      st = Go.replay(mv);
       if (ended()) return finish(null);
     }
     if (st.toMove !== me) throw new Error("not Jev's turn");
 
     const analyses = Go.analyzeAll(st.board, me, opp, st.history, st.last);
-    const truth = goTruth(analyses);
     const slim = (a, i) => ({ key: a.key, desc: a.desc, score: Math.round(a.score * 10) / 10, rank: i + 1 });
     let info;
     if (mode === "player") {
       const plan = goPlayerPlan(st, me, opp, analyses);
+      const base = { mode, truth: null, verdict: null };
       if (plan.forced) {
-        info = { move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, mode, latencyMs: 0, usage: null, model: null, optionCount: 0, truth, verdict: null, answers: null, candidates: [], heuristicRank: null, io: null };
+        info = { ...base, move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, latencyMs: 0, usage: null, model: null, optionCount: 0, answers: null, candidates: [], heuristicRank: null, io: null };
       } else {
         const { state, questions, legal } = buildGoPlayerRequest(st, mv, me, opp, plan);
         const scores = Object.fromEntries(plan.pool.map((a) => [a.key, a.score]));
         if (plan.includePass) scores.pass = 0;
         const r = await askJev(be, state, questions, () => mockFromScores(scores, legal, null));
         const best = readAnswer(r.answers.best_move);
-        const ok = legal.has(best.choice);
+        const ok = best.choice !== null && legal.has(best.choice);
         const move = ok ? best.choice : plan.pool[0].key;
         const candidates = plan.pool.map(slim);
         if (plan.includePass) candidates.push({ key: "pass", desc: Go.PASS_DESC(opp), score: 0, rank: null });
         info = {
-          move, source: ok ? "best" : "fallback", note: plan.includePass ? "pass offered" : null, mode,
-          latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size, truth, verdict: null,
-          answers: { best_move: pack(best) }, candidates,
-          heuristicRank: move === "pass" ? null : analyses.findIndex((a) => a.key === move) + 1, io: r.io,
+          ...base, move, source: ok ? "best" : "fallback", note: plan.includePass ? "pass offered" : null,
+          latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
+          answers: { best_move: pack(best) }, candidates, heuristicRank: move === "pass" ? null : analyses.findIndex((a) => a.key === move) + 1, io: r.io,
         };
       }
     } else {
+      const truth = goTruth(analyses);
       const { state, questions, legal } = buildGoFullRequest(st, mv, me, opp, analyses, mode, be.kind !== "gateway");
       const scores = Object.fromEntries(analyses.map((a) => [a.key, a.score]));
       scores.pass = -5;
@@ -155,17 +151,17 @@ export async function handleGoMove(body, env = {}) {
       let move, source;
       if (cap.choice !== "none" && truth.capture.includes(cap.choice)) { move = cap.choice; source = "capture"; }
       else if (sav.choice !== "none" && truth.save.includes(sav.choice)) { move = sav.choice; source = "save"; }
-      else if (legal.has(best.choice)) { move = best.choice; source = "best"; }
+      else if (best.choice !== null && legal.has(best.choice)) { move = best.choice; source = "best"; }
       else { move = analyses[0] ? analyses[0].key : "pass"; source = "fallback"; }
       info = {
-        move, source, note: null, mode, latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size, truth, verdict: v,
+        mode, move, source, note: null, latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size, truth, verdict: v,
         answers: { capture_now: pack(cap), must_save: pack(sav), best_move: pack(best) }, candidates: [],
         heuristicRank: move === "pass" ? null : analyses.findIndex((a) => a.key === move) + 1, io: r.io,
       };
     }
 
+    st = Go.applyMove(st, `${me} ${info.move}`);
     mv.push(`${me} ${info.move}`);
-    st = Go.replay(mv);
     if (ended()) return finish(info);
     return done("playing", info);
   } catch (e) {

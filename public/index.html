@@ -155,7 +155,7 @@ footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
       <div id="iolog"><span class="na">No calls yet.</span></div>
     </div>
     <div class="panel">
-      <h2>All games on this browser</h2>
+      <h2 id="alltimeTitle">All games on this browser</h2>
       <div class="stats" id="alltime"></div>
       <div class="row"><button id="resetscore">Reset record</button></div>
     </div>
@@ -177,8 +177,11 @@ const gridEl=$("grid");
 let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false;
 const LSTHOUGHTS="jev-thoughts";
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
-function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(cfg.ls)||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
-function saveScore(){ try{ localStorage.setItem(cfg.ls,JSON.stringify(score)); }catch{} }
+let recordBackend="mock"; try{ recordBackend=localStorage.getItem("jev-last-backend")||"mock"; }catch{}
+const lsKey=()=>cfg.ls+"::"+recordBackend;
+function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(lsKey())||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
+function saveScore(){ try{ localStorage.setItem(lsKey(),JSON.stringify(score)); }catch{} }
+function syncRecordBackend(be){ if(!be||be===recordBackend) return; recordBackend=be; try{ localStorage.setItem("jev-last-backend",be); }catch{} score=loadScore(); }
 const MODEHELP_KEYS=["player","assisted","naked"];
 const MODEHELP={
   player:"Code plays forced moves and offers a ranked, annotated pool. Jev picks the move. This is the real player.",
@@ -232,7 +235,7 @@ async function play(humanMove){
     const r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
-    S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend;
+    S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend; syncRecordBackend(d.backend);
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing") finishGame();
@@ -256,7 +259,7 @@ function addTurnToScore(t){
   else score.forced++;
   if(t.heuristicRank){ score.ranked++; if(t.heuristicRank===1) score.agree++; }
   if(t.verdict){
-    const T1=t.truth[cfg.t1]||[], T2=t.truth[cfg.t2]||[], V1=t.verdict[cfg.t1], V2=t.verdict[cfg.t2];
+    const T1=(t.truth&&t.truth[cfg.t1])||[], T2=(t.truth&&t.truth[cfg.t2])||[], V1=t.verdict[cfg.t1], V2=t.verdict[cfg.t2];
     if(T1.length){ score.q1Opp++; if(V1==="found") score.q1Found++; }
     if(T2.length){ score.q2Need++; if(V2==="found") score.q2Found++; }
     if(V1==="false") score.falseClaims++; if(V2==="false") score.falseClaims++;
@@ -275,9 +278,11 @@ function verdictCell(v,truthLen){
   if(v==="found") return `<span class="ok">✓ found</span>`;
   if(v==="missed") return `<span class="miss">✗ missed (${truthLen})</span>`;
   if(v==="false") return `<span class="miss">✗ false claim</span>`;
+  if(v==="no_answer") return `<span class="na">no answer</span>`;
   return `<span class="na">– none</span>`;
 }
 const pct=(a,b)=> b? Math.round(100*a/b)+"%" : "–";
+const tokens=(t)=> (t.usage&&t.usage.input!=null) ? `${t.usage.input} in / ${t.usage.output} out` : "tokens n/a";
 const stat=(n,l)=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`;
 const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String(o); } };
 
@@ -287,7 +292,7 @@ function renderIO(){
   $("iolog").innerHTML=calls.map(({t,i},idx)=>{
     const open= idx===calls.length-1 ? " open" : "";
     const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
-    return `<details class="io"${open}><summary>Move ${i+1} · played ${esc(t.move)} via ${esc(t.source)} · ${t.latencyMs} ms · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out":"tokens n/a"} · request ${(req.length/1024).toFixed(1)} KB</summary>
+    return `<details class="io"${open}><summary>Move ${i+1} · played ${esc(t.move)} via ${esc(t.source)} · ${t.latencyMs} ms · ${esc(tokens(t))} · request ${(req.length/1024).toFixed(1)} KB</summary>
       <div class="body">
         <h3>Request → ${esc(t.model||"")} <button class="small" data-copy="req-${i}">copy</button></h3><pre id="req-${i}">${esc(req)}</pre>
         <h3>Response <button class="small" data-copy="res-${i}">copy</button></h3><pre id="res-${i}">${esc(res)}</pre>
@@ -310,7 +315,7 @@ function render(){
   if(S.last&&S.last.candidates) for(const c of S.last.candidates) candSet.add(c.key);
   const truthRing=new Set();
   if(S.last&&S.last.verdict){
-    for(const t of [cfg.t1,cfg.t2]) if(S.last.verdict[t]!=="found"&&(S.last.truth[t]||[]).length) S.last.truth[t].forEach(k=>truthRing.add(k));
+    for(const t of [cfg.t1,cfg.t2]) if(S.last.verdict[t]!=="found"&&((S.last.truth&&S.last.truth[t])||[]).length) S.last.truth[t].forEach(k=>truthRing.add(k));
   }
   const locked=S.busy||S.status!=="playing"||toMove()!==S.human;
   for(const cell of gridEl.querySelectorAll(".cell")){
@@ -358,12 +363,12 @@ function render(){
     rows.push(`<b>played</b><span>${esc(t.move)} via <strong>${esc(t.source)}</strong>${t.answers?"":" (code, no Jev call)"}${t.heuristicRank?` · heuristic rank #${t.heuristicRank}`:""}${t.note?` · ${esc(t.note)}`:""}</span>`);
     if(t.answers&&t.answers[cfg.q1]){
       for(const [q,tk] of [[cfg.q1,cfg.t1],[cfg.q2,cfg.t2]]){
-        const a=t.answers[q], T=t.truth[tk]||[];
+        const a=t.answers[q], T=(t.truth&&t.truth[tk])||[];
         rows.push(`<b>${q}</b><span>${esc(a.choice)} · conf ${a.confidence} · ${verdictCell(t.verdict[tk],T.length)}${T.length?` · truth: ${T.map(esc).join(" ")}`:""}</span>`);
       }
     }
     if(t.answers) rows.push(`<b>best_move</b><span>${t.answers.best_move.top.map(([k,p])=>`${esc(k)} ${Math.round(p*100)}%`).join(", ")} · conf ${t.answers.best_move.confidence}</span>`);
-    rows.push(`<b>call</b><span>${t.answers?`${t.latencyMs} ms · ${t.optionCount} options · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out tokens":"tokens n/a"} · ${esc(t.model||"")}`:"none"}</span>`);
+    rows.push(`<b>call</b><span>${t.answers?`${t.latencyMs} ms · ${t.optionCount} options · ${esc(tokens(t))} tokens · ${esc(t.model||"")}`:"none"}</span>`);
     $("thought").innerHTML=rows.join("");
     if(t.candidates&&t.candidates.length){
       const probs=Object.fromEntries((t.answers?t.answers.best_move.top:[]));
@@ -376,7 +381,7 @@ function render(){
     if(x.answers){ g.calls++; g.latency+=x.latencyMs||0; if(x.usage&&typeof x.usage.input==="number"){ g.tokens+=x.usage.input; g.tokenCalls++; } } else g.forced++;
     if(x.heuristicRank){ g.ranked++; if(x.heuristicRank===1) g.agree++; }
     if(x.verdict){
-      const T1=x.truth[cfg.t1]||[], T2=x.truth[cfg.t2]||[];
+      const T1=(x.truth&&x.truth[cfg.t1])||[], T2=(x.truth&&x.truth[cfg.t2])||[];
       if(T1.length){ g.q1Opp++; if(x.verdict[cfg.t1]==="found") g.q1Found++; }
       if(T2.length){ g.q2Need++; if(x.verdict[cfg.t2]==="found") g.q2Found++; }
       if(x.verdict[cfg.t1]==="false") g.falseClaims++; if(x.verdict[cfg.t2]==="false") g.falseClaims++;
@@ -386,10 +391,11 @@ function render(){
     stat(g.moves,"Jev moves")+stat(g.forced,"played by code")+stat(g.calls,"Jev calls")+stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
     stat(`${g.q1Found}/${g.q1Opp}`,cfg.l1)+stat(`${g.q2Found}/${g.q2Need}`,cfg.l2)+
     stat(g.calls?Math.round(g.latency/g.calls):"–","avg ms per call")+stat(g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","avg input tokens");
-  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t1],(x.truth[cfg.t1]||[]).length)}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t2],(x.truth[cfg.t2]||[]).length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${x.usage&&x.usage.input!=null?x.usage.input:"–"}</td></tr>`).join("");
+  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.move)}</td><td>${esc(x.source)}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t1],((x.truth&&x.truth[cfg.t1])||[]).length)}</td><td>${verdictCell(x.verdict&&x.verdict[cfg.t2],((x.truth&&x.truth[cfg.t2])||[]).length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${esc(x.usage&&x.usage.input!=null?x.usage.input:"–")}</td></tr>`).join("");
   if(lastKey) S._animated=lastKey;
   renderIO();
 
+  $("alltimeTitle").textContent=`All games on this browser · backend: ${recordBackend}`;
   $("alltime").innerHTML=
     stat(score.games,"games")+stat(`${score.jev} · ${score.human} · ${score.draw}`,"Jev · you · draw")+stat(pct(score.jev,score.games),"Jev win rate")+
     stat(pct(score.agree,score.ranked),`heuristic #1 (${score.ranked})`)+

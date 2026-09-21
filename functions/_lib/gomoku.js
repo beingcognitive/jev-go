@@ -69,7 +69,8 @@ export function isWinAt(board, r, c) {
   return color !== "." && makesFive(board, r, c, color);
 }
 
-// Empty cells on one line within 4 of (r,c) where placing `color` completes five along that line.
+// Empty cells on one line within 4 of (r,c) where placing `color` completes five THROUGH the stone
+// at (r,c). Measuring through the probe point instead would credit shapes the stone takes no part in.
 // Assumes board[r][c] === color.
 function fivePointsDir(board, r, c, color, dr, dc) {
   const pts = [];
@@ -78,7 +79,7 @@ function fivePointsDir(board, r, c, color, dr, dc) {
     const rr = r + k * dr, cc = c + k * dc;
     if (!inBounds(rr, cc) || board[rr][cc] !== ".") continue;
     board[rr][cc] = color;
-    if (lineLenDir(board, rr, cc, color, dr, dc) >= 5) pts.push(key(rr, cc));
+    if (lineLenDir(board, r, c, color, dr, dc) >= 5) pts.push(key(rr, cc));
     board[rr][cc] = ".";
   }
   return pts;
@@ -101,7 +102,7 @@ function dirThreat(board, r, c, color, dr, dc) {
     const rr = r + k * dr, cc = c + k * dc;
     if (!inBounds(rr, cc) || board[rr][cc] !== ".") continue;
     board[rr][cc] = color;
-    const n = fivePointsDir(board, rr, cc, color, dr, dc).length;
+    const n = fivePointsDir(board, r, c, color, dr, dc).length;
     board[rr][cc] = ".";
     if (n >= 2) return "open_three";
   }
@@ -149,7 +150,6 @@ export function analyzeMove(board, r, c, color) {
   return { dirs, counts: cnt, cls: classify(cnt) };
 }
 export const makesOpenFour = (b, r, c, col) => (analyzeMove(b, r, c, col).counts.open_four || 0) > 0;
-export const makesOpenThree = (b, r, c, col) => (analyzeMove(b, r, c, col).counts.open_three || 0) > 0;
 
 // Empties where `color` completes five now.
 export function fivePointsFor(board, color) {
@@ -159,7 +159,9 @@ export function fivePointsFor(board, color) {
 export function threatSets(board, me, opp) {
   const pts = emptyPoints(board);
   const win = pts.filter((p) => makesFive(board, p.r, p.c, me)).map((p) => p.key);
-  const block = pts.filter((p) => makesFive(board, p.r, p.c, opp) || makesOpenFour(board, p.r, p.c, opp)).map((p) => p.key);
+  const five = pts.filter((p) => makesFive(board, p.r, p.c, opp)).map((p) => p.key);
+  // While `opp` can already complete five, a point that only stops an open four is not a block.
+  const block = five.length ? five : pts.filter((p) => makesOpenFour(board, p.r, p.c, opp)).map((p) => p.key);
   return { win, block };
 }
 
@@ -188,23 +190,31 @@ function adjacency(board, r, c) {
   }
   return n;
 }
-// After `me` plays (r,c): the worst immediate threat `opp` could then create ("five" | "open_four" | null).
-export function oppThreatAfter(board, r, c, me, opp, near) {
+// Threat classes the opponent cannot be allowed to make: a cross-direction fork is as final as an open four.
+export const UNSTOPPABLE = new Set(["five", "open_four", "double_four", "four_three"]);
+// After `me` plays (r,c): can `opp` create an unstoppable threat at one of `pts`? (pts = opp's threat points now;
+// adding a `me` stone only removes opp options, so nothing outside that set needs re-testing.)
+export function unstoppableAfter(board, r, c, me, opp, pts) {
   board[r][c] = me;
-  let worst = null;
-  outer: for (const q of near) {
+  let hit = false;
+  for (const q of pts) {
     if (board[q.r][q.c] !== ".") continue;
-    board[q.r][q.c] = opp;
-    for (const [dr, dc] of DIRS) {
-      if (lineLenDir(board, q.r, q.c, opp, dr, dc) >= 5) { worst = "five"; board[q.r][q.c] = "."; break outer; }
-      if (fivePointsDir(board, q.r, q.c, opp, dr, dc).length >= 2) worst = "open_four";
-    }
-    board[q.r][q.c] = ".";
+    if (UNSTOPPABLE.has(analyzeMove(board, q.r, q.c, opp).cls)) { hit = true; break; }
   }
   board[r][c] = ".";
-  return worst;
+  return hit;
 }
 const FORCING = new Set(["five", "open_four", "double_four", "four_three", "four"]);
+// A forcing move is only a real answer to a threat if the opponent's forced reply does not itself win:
+// with one completion point, the reply at that point must not create an unstoppable threat.
+function forcingIsSafe(board, r, c, me, opp) {
+  board[r][c] = me;
+  const replies = fivePointsFor(board, me);
+  let safe = replies.length >= 2;
+  if (replies.length === 1) { const q = fromKey(replies[0]); safe = !UNSTOPPABLE.has(analyzeMove(board, q.r, q.c, opp).cls); }
+  board[r][c] = ".";
+  return safe;
+}
 
 function dirNames(a, classes) {
   const names = a.dirs.filter((d) => d.threat && classes.includes(d.threat)).map((d) => d.name);
@@ -221,8 +231,7 @@ export function describeCandidate(cand, me, opp) {
   if (cand.me.cls !== "none") parts.push(`${me} makes ${LABEL[cand.me.cls]}${dirNames(cand.me, contributing(cand.me.cls))}`);
   if (VALUE[cand.opp.cls] >= VALUE.three) parts.push(`blocks ${opp} from making ${LABEL[cand.opp.cls]}${dirNames(cand.opp, contributing(cand.opp.cls))}`);
   if (!parts.length) parts.push(cand.adj ? "quiet move next to stones" : "quiet move away from the stones");
-  if (cand.danger === "five" && cand.me.cls !== "five") parts.push(`loses: ${opp} completes five next move`);
-  else if (cand.danger === "open_four" && !cand.forcing) parts.push(`leaves ${opp} an open-four threat`);
+  if (cand.danger && !cand.forcing) parts.push(`leaves ${opp} an unstoppable threat`);
   return parts.join("; ");
 }
 
@@ -232,14 +241,12 @@ export function candidates(board, me, opp, max = 12) {
   const analyzed = near.map((p) => ({ p, a: analyzeMove(board, p.r, p.c, me), b: analyzeMove(board, p.r, p.c, opp) }));
   // Adding a `me` stone can only remove `opp` options, so the opponent's threats after any of our
   // moves are a subset of its threats now. Re-test only those points.
-  const oppThreats = analyzed.filter(({ b }) => b.counts.five || b.counts.open_four).map(({ p }) => p);
+  const oppThreats = analyzed.filter(({ b }) => UNSTOPPABLE.has(b.cls)).map(({ p }) => p);
   const all = analyzed.map(({ p, a, b }) => {
-    const danger = oppThreatAfter(board, p.r, p.c, me, opp, oppThreats);
-    const forcing = FORCING.has(a.cls);
+    const danger = unstoppableAfter(board, p.r, p.c, me, opp, oppThreats);
+    const forcing = FORCING.has(a.cls) && (!danger || forcingIsSafe(board, p.r, p.c, me, opp));
     const adj = adjacency(board, p.r, p.c);
-    let score = VALUE[a.cls] + 0.9 * VALUE[b.cls] + adj * 3;
-    if (danger === "five" && a.cls !== "five") score -= 1e6;
-    else if (danger === "open_four" && !forcing) score -= 5e4;
+    const score = VALUE[a.cls] + 0.9 * VALUE[b.cls] + adj * 3;
     const cand = { ...p, me: a, opp: b, danger, forcing, adj, score };
     cand.desc = describeCandidate(cand, me, opp);
     return cand;
@@ -257,17 +264,3 @@ export function describe(board, r, c, me, opp) {
   if (!parts.length) parts.push(adjacency(board, r, c) ? "next to existing stones" : "far from all stones");
   return parts.join("; ");
 }
-
-// ---------- probabilities ----------
-
-export function confidenceFrom(probs) {
-  const vals = Object.values(probs || {}).map(Number).filter((v) => !Number.isNaN(v));
-  const n = vals.length;
-  if (n < 2) return 1;
-  const pmax = Math.max(...vals);
-  return Math.max(0, Math.min(1, (n * pmax - 1) / (n - 1)));
-}
-export function topK(probs, k = 5) {
-  return Object.entries(probs || {}).map(([k2, p]) => [k2, Number(p)]).sort((a, b) => b[1] - a[1]).slice(0, k);
-}
-export const argmax = (probs) => topK(probs, 1)[0]?.[0] ?? null;
