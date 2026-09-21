@@ -636,7 +636,8 @@ const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String
 
 function renderIO(){
   const calls=S.turns.filter(t=>t.io).length; $("callcnt").textContent=calls?`(${calls})`:"";
-  if(!S.turns.length){ $("iolog").innerHTML=`<span class="na">No calls yet.</span>`; ioBuiltFor=0; return; }
+  $("calls").hidden=!S.turns.length; // the section appears with the first call
+  if(!S.turns.length){ $("iolog").innerHTML=""; ioBuiltFor=0; return; }
   if(ioBuiltFor===S.turns.length) return; // nothing new: keep the reader's scroll and selection
   ioBuiltFor=S.turns.length;
   $("iolog").innerHTML=S.turns.map((t,i)=>{
@@ -698,7 +699,8 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
 // the candidate carried. Forced moves say so; the researcher's detail lives in "Jev's candidates".
 function renderJevCard(pickP){
   const t=S.last, card=$("jevcard");
-  if(!t){ card.innerHTML=`<span class="na">${S.status==="replay"?"The human played this move; Jev's answer is the next one.":"Jev has not moved yet."}</span>`; return; }
+  card.hidden=!t&&S.status!=="replay"; // nothing to say before Jev's first move
+  if(!t){ card.innerHTML=`<span class="na">The human played this move; Jev's answer is the next one.</span>`; return; }
   const cand=(t.candidates||[]).find(c=>c.key===t.move);
   const why=(cand?cand.desc:(t.note||"")).replace(/^pass\.\s*/,""); // the pass option's text starts with its own name
   const shown=t.shown||t.move, p= pickP!==undefined ? pickP : t.pickShown; // replays carry the move and its probability separately
