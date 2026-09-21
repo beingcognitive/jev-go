@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Is Jev a good Gomoku player?</title>
-<meta name="description" content="Play Gomoku against TypeSafe's Jev and watch how often it finds wins and forced blocks.">
+<meta name="description" content="Play Gomoku against TypeSafe's Jev. Code does the perception, Jev does the judgment, and every API call is shown.">
 <style>
 :root{
   --bg:#f6f1e7; --panel:#fffaf0; --ink:#1f1a14; --muted:#6b6257; --border:#e5d9c3;
@@ -45,13 +45,15 @@ main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minm
 .stone.pending{opacity:.55}
 .last{position:absolute;left:50%;top:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;background:#e11d48;z-index:4}
 .heat{position:absolute;inset:14%;border-radius:50%;background:var(--accent);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700}
+.cand{position:absolute;inset:30%;border-radius:50%;border:1.5px solid var(--accent);opacity:.45;z-index:1}
 .truth{position:absolute;inset:8%;border-radius:50%;border:2px dashed var(--bad);z-index:2}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
 .panel h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .status{font-size:17px;font-weight:600;min-height:24px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-button{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);cursor:pointer}
+button,select{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);cursor:pointer}
 button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.small{padding:3px 8px;font-size:12px}
 button:disabled{opacity:.5;cursor:default}
 label.toggle{display:inline-flex;gap:6px;align-items:center;color:var(--muted);font-size:14px}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--border);color:var(--muted)}
@@ -63,19 +65,28 @@ th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--pan
 .ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--muted)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
 .kv b{font-weight:600;color:var(--muted)}
+.opts{margin:6px 0 0;padding:0;list-style:none;font-size:13px}
+.opts li{padding:2px 0;border-bottom:1px dashed var(--border)}
+.opts .k{font-weight:700;display:inline-block;min-width:34px}
+.opts .p{color:var(--accent);font-weight:600;display:inline-block;min-width:40px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
 .stat{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px}
 .stat .n{font-size:20px;font-weight:700}.stat .l{font-size:12px;color:var(--muted)}
 .err{color:var(--bad);font-size:13px;margin-top:6px;white-space:pre-wrap}
 .tablewrap{overflow:auto;max-height:280px}
+.modehelp{font-size:13px;color:var(--muted);margin-top:6px}
+details.io{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)}
+details.io summary{cursor:pointer;padding:6px 10px;font-size:13px;font-weight:600}
+details.io .body{padding:0 10px 10px}
+details.io h3{font-size:12px;margin:8px 0 4px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between;align-items:center}
+pre{margin:0;max-height:320px;overflow:auto;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:8px;white-space:pre}
 footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
-code{font-size:12px;background:var(--bg);padding:1px 4px;border-radius:4px}
 </style>
 </head>
 <body>
 <header>
   <h1>Is Jev a good Gomoku player?</h1>
-  <div class="sub">You play against TypeSafe's Jev, a System One model with no lookahead. Code lists every empty point as a Choice option, asks three questions in one call, and verifies Jev's win and block claims before playing them.</div>
+  <div class="sub">You play against TypeSafe's Jev, a System One model with no lookahead. In Player mode, code does the perception and the forced tactics, and Jev judges among ranked, annotated candidates. Naked and Assisted modes hand every empty point to Jev for measurement.</div>
 </header>
 <main>
   <div><div class="boardwrap"><div class="grid" id="grid" aria-label="Gomoku board"></div></div></div>
@@ -88,21 +99,33 @@ code{font-size:12px;background:var(--bg);padding:1px 4px;border-radius:4px}
         <span class="badge" id="backend">backend: …</span>
       </div>
       <div class="row">
-        <label class="toggle"><input type="checkbox" id="assist"> Assisted mode: annotate each option with line facts computed by code</label>
+        <label class="toggle">Mode
+          <select id="mode">
+            <option value="player">Player: code perception + Jev judgment</option>
+            <option value="assisted">Assisted: all points, annotated, Jev decides all</option>
+            <option value="naked">Naked: all points, no hints, Jev decides all</option>
+          </select>
+        </label>
       </div>
+      <div class="modehelp" id="modehelp"></div>
       <div class="err" id="err"></div>
     </div>
     <div class="panel">
       <h2>Jev's last thought</h2>
       <div id="thought" class="kv"><span class="na">No move yet.</span></div>
+      <ul class="opts" id="opts"></ul>
     </div>
     <div class="panel">
       <h2>This game</h2>
       <div class="stats" id="gamestats"></div>
       <div class="tablewrap"><table>
-        <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Conf</th><th>Win detect</th><th>Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
+        <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Heur.</th><th>Conf</th><th>Win detect</th><th>Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
         <tbody id="turns"></tbody>
       </table></div>
+    </div>
+    <div class="panel">
+      <h2>Jev API calls · request and response</h2>
+      <div id="iolog"><span class="na">No calls yet.</span></div>
     </div>
     <div class="panel">
       <h2>All games on this browser</h2>
@@ -111,17 +134,23 @@ code{font-size:12px;background:var(--bg);padding:1px 4px;border-radius:4px}
     </div>
   </div>
 </main>
-<footer>Blue discs are Jev's top-5 best-move probabilities. A dashed red ring marks a forced point Jev missed or misidentified. "Via" says which answer was played: a verified win, a verified block, or the best-move answer. Confidence is TypeSafe's shape formula over the option set, so with 200+ options it runs low by construction.</footer>
+<footer>Blue discs are Jev's top-5 probabilities. Thin blue rings are the candidate pool code offered in Player mode. A dashed red ring marks a forced point Jev missed in Naked or Assisted mode. "Via" says who decided: forced-win, forced-block and open-four are played by code with no call; best is Jev's pick. "Heur." is where Jev's pick ranked in the code heuristic's ordering.</footer>
 <script>
-const SIZE=15, COLS="ABCDEFGHIJKLMNO", LS="jev-gomoku-v1";
+const SIZE=15, COLS="ABCDEFGHIJKLMNO", LS="jev-gomoku-v2", LSMODE="jev-gomoku-mode";
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
 let S=null;
 
-const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,turns:0,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenTurns:0};
+const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
 function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(LS)||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
 function saveScore(){ try{ localStorage.setItem(LS,JSON.stringify(score)); }catch{} }
 let score=loadScore();
+try{ const m=localStorage.getItem(LSMODE); if(m) $("mode").value=m; }catch{}
+const MODEHELP={
+  player:"Code plays forced wins and blocks and offers a ranked, annotated pool. Jev picks the move. This is the real player.",
+  assisted:"Every empty point is an option with exact line facts. Jev answers win, block and best; claims are verified before being played.",
+  naked:"Every empty point is an option with no description. Measures Jev alone."
+};
 
 function newGame(jev){
   S={ board:Array.from({length:SIZE},()=>".".repeat(SIZE)), moves:[], jev, human: jev==="O"?"X":"O",
@@ -130,7 +159,6 @@ function newGame(jev){
 function counts(){ let X=0,O=0; for(const r of S.board) for(const ch of r){ if(ch==="X")X++; else if(ch==="O")O++; } return {X,O}; }
 function toMove(){ const {X,O}=counts(); return X===O?"X":"O"; }
 function keyOf(r,c){ return COLS[c]+(SIZE-r); }
-function cellAt(k){ const c=COLS.indexOf(k[0]); const r=SIZE-Number(k.slice(1)); return {r,c}; }
 
 function buildGrid(){
   gridEl.innerHTML="";
@@ -140,15 +168,13 @@ function buildGrid(){
     const rl=document.createElement("div"); rl.className="lbl"; rl.textContent=SIZE-r; gridEl.appendChild(rl);
     for(let c=0;c<SIZE;c++){
       const cell=document.createElement("div");
-      cell.className=`cell r${r} c${c}`; cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=keyOf(r,c);
-      cell.title=keyOf(r,c);
+      cell.className=`cell r${r} c${c}`; cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=keyOf(r,c); cell.title=keyOf(r,c);
       if([3,7,11].includes(r)&&[3,7,11].includes(c)){ const dot=document.createElement("span"); dot.className="dot"; cell.appendChild(dot); }
       cell.addEventListener("click",()=>onCell(r,c));
       gridEl.appendChild(cell);
     }
   }
 }
-
 function onCell(r,c){
   if(!S||S.busy||S.status!=="playing") return;
   if(toMove()!==S.human) return;
@@ -160,7 +186,7 @@ async function play(humanMove){
   S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
   try{
     const r=await fetch("/api/move",{method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({board:S.board,moves:S.moves,humanMove,jev:S.jev,assist:$("assist").checked})});
+      body:JSON.stringify({board:S.board,moves:S.moves,humanMove,jev:S.jev,mode:$("mode").value})});
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend;
@@ -171,12 +197,16 @@ async function play(humanMove){
 }
 
 function addTurnToScore(t){
-  score.turns++; score.latency+=t.latencyMs||0;
-  if(t.usage&&typeof t.usage.input==="number"){ score.tokens+=t.usage.input; score.tokenTurns++; }
-  if(t.truth.win.length){ score.winOpp++; if(t.verdict.win==="found") score.winFound++; }
-  if(t.truth.block.length){ score.blockNeed++; if(t.verdict.block==="found") score.blockFound++; }
-  if(t.verdict.win==="false") score.falseClaims++;
-  if(t.verdict.block==="false") score.falseClaims++;
+  score.moves++;
+  if(t.answers){ score.calls++; score.latency+=t.latencyMs||0; if(t.usage&&typeof t.usage.input==="number"){ score.tokens+=t.usage.input; score.tokenCalls++; } }
+  else score.forced++;
+  if(t.heuristicRank){ score.ranked++; if(t.heuristicRank===1) score.agree++; }
+  if(t.verdict){
+    if(t.truth.win.length){ score.winOpp++; if(t.verdict.win==="found") score.winFound++; }
+    if(t.truth.block.length){ score.blockNeed++; if(t.verdict.block==="found") score.blockFound++; }
+    if(t.verdict.win==="false") score.falseClaims++;
+    if(t.verdict.block==="false") score.falseClaims++;
+  }
   saveScore();
 }
 function finishGame(){
@@ -185,7 +215,9 @@ function finishGame(){
   saveScore();
 }
 
+const esc=(s)=>String(s).replace(/[&<>"]/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function verdictCell(v,truthLen){
+  if(!v) return `<span class="na">n/a</span>`;
   if(v==="found") return `<span class="ok">✓ found</span>`;
   if(v==="missed") return `<span class="miss">✗ missed (${truthLen})</span>`;
   if(v==="false") return `<span class="miss">✗ false claim</span>`;
@@ -193,14 +225,32 @@ function verdictCell(v,truthLen){
 }
 const pct=(a,b)=> b? Math.round(100*a/b)+"%" : "–";
 const stat=(n,l)=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+const fmtJSON=(o)=>{ try{ return JSON.stringify(o,null,2); }catch{ return String(o); } };
+
+function renderIO(){
+  const calls=S.turns.map((t,i)=>({t,i})).filter(x=>x.t.io);
+  if(!calls.length){ $("iolog").innerHTML=`<span class="na">No calls yet${S.turns.length?" (all moves so far were forced by code)":""}.</span>`; return; }
+  $("iolog").innerHTML=calls.map(({t,i},idx)=>{
+    const open= idx===calls.length-1 ? " open" : "";
+    const req=fmtJSON(t.io.request), res=fmtJSON(t.io.response);
+    return `<details class="io"${open}><summary>Move ${i+1} · played ${t.move} via ${t.source} · ${t.latencyMs} ms · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out":"tokens n/a"} · request ${(req.length/1024).toFixed(1)} KB</summary>
+      <div class="body">
+        <h3>Request → ${esc(t.model||"")} <button class="small" data-copy="req-${i}">copy</button></h3><pre id="req-${i}">${esc(req)}</pre>
+        <h3>Response <button class="small" data-copy="res-${i}">copy</button></h3><pre id="res-${i}">${esc(res)}</pre>
+      </div></details>`;
+  }).join("");
+  for(const b of $("iolog").querySelectorAll("button[data-copy]")){
+    b.addEventListener("click",async()=>{ try{ await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent="copied"; setTimeout(()=>b.textContent="copy",1200); }catch{} });
+  }
+}
 
 function render(){
-  const {X,O}=counts();
   const lastKey=S.moves.length? S.moves[S.moves.length-1].split(" ")[1] : null;
-  const heat={}; let pmax=0;
-  if(S.last){ for(const [k,p] of S.last.answers.best_move.top){ heat[k]=p; pmax=Math.max(pmax,p); } }
+  const heat={}; let pmax=0; const candSet=new Set();
+  if(S.last&&S.last.answers){ for(const [k,p] of S.last.answers.best_move.top){ heat[k]=p; pmax=Math.max(pmax,p); } }
+  if(S.last&&S.last.candidates) for(const c of S.last.candidates) candSet.add(c.key);
   const truthRing=new Set();
-  if(S.last){
+  if(S.last&&S.last.verdict){
     if(S.last.verdict.win!=="found"&&S.last.truth.win.length) S.last.truth.win.forEach(k=>truthRing.add(k));
     if(S.last.verdict.block!=="found"&&S.last.truth.block.length) S.last.truth.block.forEach(k=>truthRing.add(k));
   }
@@ -208,7 +258,7 @@ function render(){
   for(const cell of gridEl.querySelectorAll(".cell")){
     const r=+cell.dataset.r, c=+cell.dataset.c, k=cell.dataset.key;
     cell.classList.toggle("locked",locked);
-    for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth")) el.remove();
+    for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth,.cand")) el.remove();
     const ch=S.board[r][c];
     if(ch!=="."){
       const st=document.createElement("span"); st.className="stone "+ch; cell.appendChild(st);
@@ -217,6 +267,7 @@ function render(){
       const st=document.createElement("span"); st.className="stone pending "+S.human; cell.appendChild(st);
     } else {
       if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.18+0.7*heat[k]/(pmax||1)).toFixed(2); h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
+      else if(candSet.has(k)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
       if(truthRing.has(k)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
     }
   }
@@ -232,50 +283,54 @@ function render(){
   badge.textContent="backend: "+(be||"…"); badge.className="badge "+(be==="mock"?"mock":be?"live":"");
   if(be==="mock") badge.title="No API key set: heuristic opponent, not Jev.";
   $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy;
+  $("modehelp").textContent=MODEHELP[$("mode").value]||"";
 
   const t=S.last;
   if(t){
-    const fmtTop=(a)=>a.top.map(([k,p])=>`${k} ${Math.round(p*100)}%`).join(", ");
-    $("thought").innerHTML=
-      `<b>played</b><span>${t.move} via <strong>${t.source}</strong>${t.assist?" (assisted)":""}</span>`+
-      `<b>win_now</b><span>${t.answers.win_now.choice} · conf ${t.answers.win_now.confidence} · ${verdictCell(t.verdict.win,t.truth.win.length)}${t.truth.win.length?` · truth: ${t.truth.win.join(" ")}`:""}</span>`+
-      `<b>must_block</b><span>${t.answers.must_block.choice} · conf ${t.answers.must_block.confidence} · ${verdictCell(t.verdict.block,t.truth.block.length)}${t.truth.block.length?` · truth: ${t.truth.block.join(" ")}`:""}</span>`+
-      `<b>best_move</b><span>${fmtTop(t.answers.best_move)} · conf ${t.answers.best_move.confidence}</span>`+
-      `<b>call</b><span>${t.latencyMs} ms · ${t.optionCount} options · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out tokens":"tokens n/a"} · ${t.model||""}</span>`;
-  } else {
-    $("thought").innerHTML=`<span class="na">No move yet.</span>`;
-  }
+    const rows=[];
+    rows.push(`<b>played</b><span>${t.move} via <strong>${t.source}</strong>${t.answers?"":" (code, no Jev call)"}${t.heuristicRank?` · heuristic rank #${t.heuristicRank}`:""}${t.note?` · ${esc(t.note)}`:""}</span>`);
+    if(t.answers&&t.answers.win_now){
+      rows.push(`<b>win_now</b><span>${t.answers.win_now.choice} · conf ${t.answers.win_now.confidence} · ${verdictCell(t.verdict.win,t.truth.win.length)}${t.truth.win.length?` · truth: ${t.truth.win.join(" ")}`:""}</span>`);
+      rows.push(`<b>must_block</b><span>${t.answers.must_block.choice} · conf ${t.answers.must_block.confidence} · ${verdictCell(t.verdict.block,t.truth.block.length)}${t.truth.block.length?` · truth: ${t.truth.block.join(" ")}`:""}</span>`);
+    }
+    if(t.answers) rows.push(`<b>best_move</b><span>${t.answers.best_move.top.map(([k,p])=>`${k} ${Math.round(p*100)}%`).join(", ")} · conf ${t.answers.best_move.confidence}</span>`);
+    rows.push(`<b>call</b><span>${t.answers?`${t.latencyMs} ms · ${t.optionCount} options · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out tokens":"tokens n/a"} · ${esc(t.model||"")}`:"none"}</span>`);
+    $("thought").innerHTML=rows.join("");
+    if(t.candidates&&t.candidates.length){
+      const probs=Object.fromEntries((t.answers?t.answers.best_move.top:[]));
+      $("opts").innerHTML=t.candidates.map(c=>`<li><span class="k">${c.key}</span> <span class="p">${probs[c.key]!==undefined?Math.round(probs[c.key]*100)+"%":""}</span> <span class="na">#${c.rank}</span> ${esc(c.desc)}</li>`).join("");
+    } else $("opts").innerHTML="";
+  } else { $("thought").innerHTML=`<span class="na">No move yet.</span>`; $("opts").innerHTML=""; }
 
-  const g={turns:S.turns.length,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenTurns:0};
+  const g={moves:S.turns.length,calls:0,forced:0,agree:0,ranked:0,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
   for(const x of S.turns){
-    g.latency+=x.latencyMs||0;
-    if(x.usage&&typeof x.usage.input==="number"){ g.tokens+=x.usage.input; g.tokenTurns++; }
-    if(x.truth.win.length){ g.winOpp++; if(x.verdict.win==="found") g.winFound++; }
-    if(x.truth.block.length){ g.blockNeed++; if(x.verdict.block==="found") g.blockFound++; }
-    if(x.verdict.win==="false") g.falseClaims++; if(x.verdict.block==="false") g.falseClaims++;
+    if(x.answers){ g.calls++; g.latency+=x.latencyMs||0; if(x.usage&&typeof x.usage.input==="number"){ g.tokens+=x.usage.input; g.tokenCalls++; } } else g.forced++;
+    if(x.heuristicRank){ g.ranked++; if(x.heuristicRank===1) g.agree++; }
+    if(x.verdict){
+      if(x.truth.win.length){ g.winOpp++; if(x.verdict.win==="found") g.winFound++; }
+      if(x.truth.block.length){ g.blockNeed++; if(x.verdict.block==="found") g.blockFound++; }
+      if(x.verdict.win==="false") g.falseClaims++; if(x.verdict.block==="false") g.falseClaims++;
+    }
   }
   $("gamestats").innerHTML=
-    stat(g.turns,"Jev moves")+
-    stat(`${g.winFound}/${g.winOpp}`,"wins found")+
-    stat(`${g.blockFound}/${g.blockNeed}`,"forced blocks found")+
-    stat(g.falseClaims,"false claims")+
-    stat(g.turns?Math.round(g.latency/g.turns):"–","avg ms")+
-    stat(g.tokenTurns?Math.round(g.tokens/g.tokenTurns):"–","avg input tokens");
-  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${x.move}</td><td>${x.source}</td><td>${x.answers.best_move.confidence}</td><td>${verdictCell(x.verdict.win,x.truth.win.length)}</td><td>${verdictCell(x.verdict.block,x.truth.block.length)}</td><td>${x.latencyMs}</td><td>${x.usage&&x.usage.input!=null?x.usage.input:"–"}</td></tr>`).join("");
+    stat(g.moves,"Jev moves")+stat(g.forced,"forced by code")+stat(g.calls,"Jev calls")+
+    stat(`${g.agree}/${g.ranked}`,"picked heuristic #1")+
+    stat(`${g.winFound}/${g.winOpp}`,"wins found")+stat(`${g.blockFound}/${g.blockNeed}`,"forced blocks found")+
+    stat(g.calls?Math.round(g.latency/g.calls):"–","avg ms per call")+stat(g.tokenCalls?Math.round(g.tokens/g.tokenCalls):"–","avg input tokens");
+  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${x.move}</td><td>${x.source}</td><td>${x.heuristicRank?"#"+x.heuristicRank:"–"}</td><td>${x.answers?x.answers.best_move.confidence:"–"}</td><td>${verdictCell(x.verdict&&x.verdict.win,x.truth.win.length)}</td><td>${verdictCell(x.verdict&&x.verdict.block,x.truth.block.length)}</td><td>${x.answers?x.latencyMs:"–"}</td><td>${x.usage&&x.usage.input!=null?x.usage.input:"–"}</td></tr>`).join("");
+  renderIO();
 
   $("alltime").innerHTML=
-    stat(score.games,"games")+
-    stat(`${score.jev} · ${score.human} · ${score.draw}`,"Jev · you · draw")+
-    stat(pct(score.jev,score.games),"Jev win rate")+
-    stat(pct(score.winFound,score.winOpp),`wins found (${score.winOpp})`)+
-    stat(pct(score.blockFound,score.blockNeed),`blocks found (${score.blockNeed})`)+
-    stat(score.falseClaims,"false claims")+
-    stat(score.turns?Math.round(score.latency/score.turns):"–","avg ms");
+    stat(score.games,"games")+stat(`${score.jev} · ${score.human} · ${score.draw}`,"Jev · you · draw")+stat(pct(score.jev,score.games),"Jev win rate")+
+    stat(pct(score.agree,score.ranked),`heuristic #1 (${score.ranked})`)+
+    stat(pct(score.winFound,score.winOpp),`wins found (${score.winOpp})`)+stat(pct(score.blockFound,score.blockNeed),`blocks found (${score.blockNeed})`)+
+    stat(score.calls?Math.round(score.latency/score.calls):"–","avg ms per call");
 }
 
 $("newgame").addEventListener("click",()=>{ newGame("O"); render(); });
 $("jevopens").addEventListener("click",()=>{ newGame("X"); render(); play(null); });
 $("resetscore").addEventListener("click",()=>{ score={...DEFAULT_SCORE}; saveScore(); render(); });
+$("mode").addEventListener("change",()=>{ try{ localStorage.setItem(LSMODE,$("mode").value); }catch{} render(); });
 
 buildGrid(); newGame("O"); render();
 </script>

@@ -4,32 +4,28 @@ A one-page experiment: you play Gomoku (15×15, five in a row) against **Jev**, 
 System One decision model, and the page keeps score of how often Jev finds immediate wins and
 forced blocks. Hosted on **Cloudflare Pages** with one Pages Function.
 
-## How the prompt works
+## Three modes
 
-Every empty point on the board becomes one option of a `choice` question. Nothing is hand-picked,
-so Jev can never play an illegal move. Three questions go out in one call against the same state:
+| mode | what code does | what Jev sees | who decides |
+|---|---|---|---|
+| **Player** (default) | full perception: fives, open/closed/split fours, open threes, forks, "this move loses next turn"; plays forced wins and blocks itself; prunes to a ranked pool of ~12 candidates | one `choice` question over the pool, each option annotated with exactly what it creates and blocks, plus a threat summary in the state | code for forced tactics, **Jev for everything else** |
+| **Assisted** | annotates every empty point with the same line facts | three `choice` questions (`win_now`, `must_block`, `best_move`) over all empty points | Jev; win/block claims are verified before being played |
+| **Naked** | nothing | the same three questions, every empty point, no descriptions | Jev alone. Measurement mode. |
 
-| question     | asks                                                                 | options          |
-|--------------|----------------------------------------------------------------------|------------------|
-| `win_now`    | the point where Jev makes five in a row, or `none`                   | empties + `none` |
-| `must_block` | the point where the human makes five or an open four next, or `none` | empties + `none` |
-| `best_move`  | the strongest move                                                   | empties          |
+In Player mode the page shows where Jev's pick ranked in the code heuristic's ordering
+("Heur. #k"), so you can see whether Jev's judgment agrees with, beats, or ignores the
+1-ply evaluation. Forced moves are logged as `forced-win`, `forced-block` and `open-four`
+and cost no call.
 
-Code computes the ground truth for the two threat questions and **verifies** Jev's claims before
-playing them. Priority: verified win → verified block → `best_move`. A wrong claim falls through
-and is logged as a false claim. Detection rates, latency and token usage are tallied per game and
-across games (localStorage).
-
-**Assisted mode** replaces the plain option descriptions (`"F8": "column F, row 8"`) with
-code-computed line facts (`"blocks X's open three"`), so Jev reads labels instead of the grid.
-Leave it off to measure Jev itself.
+Every Jev call's full request payload and raw response are shown in the **Jev API calls**
+panel, one expandable entry per move, with copy buttons.
 
 ## Layout
 
 ```
 functions/api/move.js     Cloudflare Pages Function: POST /api/move
 functions/_lib/move.js    runtime-agnostic core (prompt build, Jev call, verify, decide)
-functions/_lib/gomoku.js  board, win/threat detection, option descriptions
+functions/_lib/gomoku.js  threat engine, candidate ranking, option descriptions
 public/index.html         the page
 dev.mjs                   plain Node dev server (no wrangler needed)
 test.mjs                  node:test suite
