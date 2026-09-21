@@ -139,7 +139,7 @@ export async function handleMove(body, env = {}) {
     let board = G.parseBoard(rows);
     const { X: x0, O: o0 } = G.counts(board);
     // A session token makes its board authoritative; without one only the empty board starts a verified game.
-    const s = await openSession(env, state, "gomoku", moves.length === 0 && x0 === 0 && o0 === 0);
+    const s = await openSession(env, state, "gomoku", moves.length === 0 && x0 === 0 && o0 === 0, humanMove);
     if (s.mode) mode = s.mode; else s.mode = mode; // the mode is sealed into the session: the client cannot change it mid-game
     if (s.verified && s.pos) {
       if (s.n !== moves.length) throw new Error("bad state");
@@ -155,7 +155,7 @@ export async function handleMove(body, env = {}) {
     const done = async (status, jevInfo) => ({
       status: 200,
       body: { ok: true, board: G.toRows(board), moves: mv, status, backend: be.kind, mode, jev: jevInfo,
-        state: s.verified ? await sealSession(env, "gomoku", s, mv.length, G.toRows(board)) : null, gameId: s.verified ? s.id : null, verified: s.verified, owner: user ? user.name : null },
+        state: s.verified ? await sealSession(env, "gomoku", s, mv.length, G.toRows(board)) : null, gameId: s.verified ? s.id : null, verified: s.verified, owner: user && mv.length ? user.name : null },
       after: () => record(store, "gomoku", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,
         rows: turnRows(s.id, startPly, humanBoard, humanKey, jevInfo, G.toRows(board)) }),
     });

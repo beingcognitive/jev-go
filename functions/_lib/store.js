@@ -21,6 +21,7 @@ export function memoryStore() {
     async addTurn(t) { const arr = turns.get(t.game_id) || []; arr[t.ply] = t; turns.set(t.game_id, arr); },
     async getGame(id) { return games.get(id) || null; },
     async getTurns(id) { return (turns.get(id) || []).filter(Boolean); },
+    async getTurn(id, ply) { return (turns.get(id) || [])[ply] || null; },
     async claim(id, name) {
       const g = games.get(id);
       if (!g || g.result !== "human_wins" || g.name) return null;
@@ -55,18 +56,21 @@ export function memoryStore() {
 export function d1Store(db) {
   return {
     kind: "d1",
+    // Same rules as the memory store. The result is written by a separate conditional UPDATE so that the first
+    // request to finish a game is the only one that sees a change, and only that one bumps the counter.
     async upsertGame(g) {
-      const prev = g.result ? await this.getGame(g.id) : null; // one point read, only on the request that ends a game
       await db.prepare(
         `INSERT INTO games (id, game, mode, jev, backend, model, result, plies, name, user_id, created_at, ended_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?11, ?12, ?9, ?10)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?10, ?11, ?8, NULL)
          ON CONFLICT(id) DO UPDATE SET mode = CASE WHEN games.mode = ?3 THEN ?3 ELSE 'mixed' END, model = COALESCE(?6, games.model),
-           result = COALESCE(games.result, ?7), plies = MAX(games.plies, ?8), ended_at = COALESCE(games.ended_at, ?10),
-           name = COALESCE(games.name, ?11), user_id = COALESCE(games.user_id, ?12)`,
-      ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.result ?? null, g.plies, g.created_at, g.ended_at ?? null, g.name ?? null, g.user_id ?? null).run();
-      // Counters keep stats() at three row reads instead of a scan; guarded so a replayed final request cannot count twice.
-      if (g.result && !(prev && prev.result) && g.backend === "native") {
-        await db.prepare("INSERT INTO counters (game, result, n) VALUES (?1, ?2, 1) ON CONFLICT(game, result) DO UPDATE SET n = n + 1").bind(g.game, g.result).run();
+           plies = MAX(games.plies, ?7), name = COALESCE(games.name, ?10), user_id = COALESCE(games.user_id, ?11)`,
+      ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.plies, g.created_at, g.ended_at ?? null, g.name ?? null, g.user_id ?? null).run();
+      if (g.result) {
+        const r = await db.prepare("UPDATE games SET result = ?2, ended_at = ?3 WHERE id = ?1 AND result IS NULL").bind(g.id, g.result, g.ended_at ?? Date.now()).run();
+        // Counters keep stats() at three row reads instead of a scan; only the request that actually finished the game counts.
+        if (r.meta && r.meta.changes && g.backend === "native") {
+          await db.prepare("INSERT INTO counters (game, result, n) VALUES (?1, ?2, 1) ON CONFLICT(game, result) DO UPDATE SET n = n + 1").bind(g.game, g.result).run();
+        }
       }
     },
     async addTurn(t) {
@@ -78,6 +82,7 @@ export function d1Store(db) {
         t.latency_ms ?? null, t.input_tokens ?? null, t.output_tokens ?? null, t.io ? JSON.stringify(t.io) : null).run();
     },
     async getGame(id) { return (await db.prepare("SELECT * FROM games WHERE id = ?1").bind(id).first()) || null; },
+    async getTurn(id, ply) { return (await db.prepare("SELECT ply, side, move FROM turns WHERE game_id = ?1 AND ply = ?2").bind(id, ply).first()) || null; },
     async getTurns(id) {
       const { results } = await db.prepare("SELECT * FROM turns WHERE game_id = ?1 ORDER BY ply").bind(id).all();
       return results.map((t) => ({ ...t, board: JSON.parse(t.board), verdict: t.verdict ? JSON.parse(t.verdict) : null, heat: t.heat ? JSON.parse(t.heat) : null, io: t.io ? JSON.parse(t.io) : null }));

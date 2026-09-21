@@ -217,6 +217,7 @@ details.io .body{padding:0 0 12px}
 details.io h3{font:400 14px/1.3 var(--sans);margin:8px 0 4px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:center}
 .io.nocall{padding:8px 0;font-size:14px;border-bottom:1px solid var(--rule);color:var(--ink-2)}
 pre{margin:0;max-height:320px;overflow:auto;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--sheet);border:1px solid var(--rule);border-radius:4px;padding:10px;white-space:pre;max-width:100%}
+#iolog{contain:inline-size} /* the play track is min-content on wide screens: the raw JSON must not feed its intrinsic width */
 .lb{width:100%;border-collapse:collapse;font-size:14px}
 .lb td,.lb th{padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap}
 .marks{font-size:14px;color:var(--ink-2);line-height:1.5;padding-left:18px}
@@ -404,7 +405,9 @@ let me=null; // { session, user:{id,name,picture}, expiresAt }
 try{ const raw=localStorage.getItem(LSSESSION); if(raw){ const v=JSON.parse(raw); if(v&&v.session&&v.expiresAt>Date.now()) me=v; } }catch{}
 const $=(id)=>document.getElementById(id);
 const gridEl=$("grid");
-let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false, lastPointer="mouse";
+let S=null, cfg=CFG.gomoku, score=null, gameSel="gomoku", modeSel="player", thoughtsSel="fade", fadeTimer=null, fadeArmed=false;
+let lastPointer=(window.matchMedia&&matchMedia("(hover:hover)").matches)?"mouse":"touch"; // seeded from the device, then kept current by every press
+let gsiDown=false; // the Google script failed to load
 let ioOpen=new Set(), ioBuiltFor=-1; // which API-call entries the reader opened, and how many turns the log was last built for
 let signinGame=null; // the game on screen when the Google button was pressed
 const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,moves:0,calls:0,forced:0,agree:0,ranked:0,q1Opp:0,q1Found:0,q2Need:0,q2Found:0,falseClaims:0,latency:0,tokens:0,tokenCalls:0};
@@ -504,7 +507,7 @@ function buildGrid(){
     }
   }
 }
-gridEl.addEventListener("pointerdown",(e)=>{ lastPointer=e.pointerType||"mouse"; },{passive:true});
+document.addEventListener("pointerdown",(e)=>{ lastPointer=e.pointerType||"mouse"; },{passive:true});
 // "Fade" means: Jev's marks leave when you start your move. Aiming, selecting a piece and passing all count.
 function startingMove(){ if(thoughtsSel==="fade"){ clearTimeout(fadeTimer); gridEl.classList.add("faded"); } }
 // Stones: a mouse commits on click (the hover ghost was the preview). A finger aims first and commits on the
@@ -564,6 +567,7 @@ async function play(humanMove,localMove){
     if(me) body.session=me.session;
     if(S.game==="gomoku") body.board=S.board; // the server validates the board even when the token carries it
     if(S.token) body.state=S.token;
+    const sentSession=body.session||null;
     let r=await post(body);
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
     if(!d.ok&&d.error==="bad state"&&body.state){ delete body.state; S.token=null; $("note").textContent=friendly("bad state"); r=await post(body); try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); } }
@@ -582,8 +586,8 @@ async function play(humanMove,localMove){
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend; syncRecordBackend(d.backend);
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
     S.token=d.state||null; S.gameId=d.gameId||S.gameId; S.verified=!!d.verified;
-    S.owner=S.owner||d.owner||null; // first write wins, like the record itself
-    if(me&&d.verified&&!d.owner) signedOut("Your sign-in expired. Sign in again to keep your games."); // the server no longer accepts the session
+    if(d.moves.length){ S.owner=S.owner||d.owner||null; } // first write wins, like the record itself; a state query records nothing
+    if(sentSession&&me&&me.session===sentSession&&d.verified&&d.moves.length&&!d.owner) signedOut("Your sign-in expired. Sign in again to keep your games."); // the server rejected the session this request carried
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing"){ finishGame(); if(S.verified&&S.backend==="native") loadLeaderboard(true); if(me&&S.verified) loadMyGames(); }
@@ -728,8 +732,8 @@ function renderResult(){
   else if(won){
     replay=true;
     if(S.owner) note=`On the board as ${S.owner}.`;
-    else { note="You beat the real Jev. Put a name on the hall of fame, or sign in to use your Google name."; claim=true; signin=!me; }
-  } else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : (me ? "Saved." : "Sign in to keep this game under your name."); signin=!me; }
+    else { note= gsiDown ? "You beat the real Jev. Put a name on the hall of fame." : "You beat the real Jev. Put a name on the hall of fame, or sign in to use your Google name."; claim=true; signin=!me&&!gsiDown; }
+  } else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : (me||gsiDown ? "Saved." : "Sign in to keep this game under your name."); signin=!me&&!gsiDown; }
   $("rnote").textContent=note; $("claim").hidden=!claim; $("rsignin").hidden=!signin;
   $("rsigninwhy").textContent= won ? "Your Google first name goes on the board." : "Your games then follow your account to any device.";
   if(signin&&!$("gsi2").firstChild) renderGsi(); // the button is drawn only once its box is visible
@@ -831,7 +835,7 @@ function render(light){
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy||!!R; b.setAttribute("aria-checked",b.dataset.v===gameSel); }
   for(const b of $("modeseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===modeSel); b.setAttribute("aria-checked",b.dataset.v===modeSel); }
   for(const b of $("thoughtseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===thoughtsSel); b.setAttribute("aria-checked",b.dataset.v===thoughtsSel); }
-  $("modehelp").textContent=(MODEHELP[modeSel]||"")+(S.status==="playing"&&S.moves.length&&S.mode!==modeSel?" Applies to your next game; this one stays in "+S.mode+" mode.":"");
+  $("modehelp").textContent=(MODEHELP[modeSel]||"")+(S.status==="playing"&&S.mode!==modeSel?" Applies to your next game; this one stays in "+S.mode+" mode.":"");
   $("thoughthelp").textContent=THOUGHTHELP[thoughtsSel]||"";
   renderJevCard(pickP);
 
@@ -878,7 +882,7 @@ function render(light){
 // ---- drawers ----
 function openDrawer(id){ const d=$(id); if(!d.open) d.showModal(); }
 for(const d of document.querySelectorAll("dialog.drawer")){
-  d.addEventListener("click",(e)=>{ if(e.target===d) d.close(); }); // the backdrop
+  d.addEventListener("click",(e)=>{ const r=d.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) d.close(); }); // the backdrop only, never the drawer's own empty space
   for(const b of d.querySelectorAll("[data-close]")) b.addEventListener("click",()=>d.close());
 }
 $("menubtn").addEventListener("click",()=>openDrawer("menu"));
@@ -902,7 +906,7 @@ window.gsiReady=function(){
   renderGsi();
 };
 window.gsiFailed=function(){ // the Google script did not load (blocked or offline): say so instead of showing an empty slot
-  $("gsi").innerHTML=""; $("rsignin").hidden=true;
+  gsiDown=true; $("gsi").innerHTML=""; $("rsignin").hidden=true;
   $("whohelp").textContent="Google sign-in could not load here. You can still play, and put a name on the board when you win.";
 };
 function signedOut(msg){

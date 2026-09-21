@@ -11,13 +11,19 @@ export const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 // Returns { id, n, pos, mode, verified, created }. `state` absent: a fresh verified game only if `isFresh`,
 // otherwise an unverified game (playable, never recorded). A present but invalid token throws "bad state".
 // A token older than the game's recorded position ("stale state") is refused, so a player cannot rewind a
-// recorded game by resending an earlier token; the mode is sealed too, so it cannot change mid-game.
-export async function openSession(env, state, game, isFresh) {
+// recorded game by resending an earlier token; the mode is sealed too, so it cannot change mid-game. The one
+// rewind allowed is a retry: the same human move resent from one exchange back (its response was lost).
+export async function openSession(env, state, game, isFresh, humanMove = null) {
   if (state !== null && state !== undefined) {
     const p = await verify(state, secretOf(env));
     if (!p || p.g !== game || typeof p.id !== "string" || typeof p.n !== "number") throw new Error("bad state");
-    const g = await storeFor(env).getGame(p.id);
-    if (g && (g.result || g.plies > p.n)) throw new Error("stale state");
+    const store = storeFor(env);
+    const g = await store.getGame(p.id);
+    if (g && (g.result || g.plies > p.n)) {
+      const behind = g.plies - p.n;
+      const same = humanMove && behind >= 1 && behind <= 2 && (await store.getTurn(p.id, p.n)) ?.move === String(humanMove);
+      if (!same) throw new Error("stale state");
+    }
     return { id: p.id, n: p.n, pos: p.pos, mode: p.m || null, verified: true, created: p.t || null };
   }
   return { id: newId(), n: 0, pos: null, mode: null, verified: !!isFresh, created: Date.now() };

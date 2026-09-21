@@ -326,6 +326,7 @@ test("go handleGoMove: plays, ends on two passes with a score, rejects bad input
   assert.equal(r.status, 200); assert.equal(r.body.game, "go"); assert.equal(r.body.moves.length, 2);
   assert.ok(r.body.jev.io && r.body.jev.candidates.length);
   const bad = await handleGoMove({ moves: ["X E5", "O D5"], humanMove: "E5", jev: "O" }, {});
+  assert.equal(bad.body.error, "occupied"); // the bare reason, so the page can put it in the player's words
   assert.equal(bad.status, 400); assert.match(bad.body.error, /occupied/);
   const oot = await handleGoMove({ moves: ["X E5"], humanMove: "D5", jev: "O" }, {});
   assert.equal(oot.status, 400); assert.match(oot.body.error, /not the human/);
@@ -779,8 +780,13 @@ test("records: the mode is sealed into the session, a game cannot be rewound wit
   const r2 = await handleChessMove({ moves: r1.body.moves, humanMove: "d4", jev: "O", mode: "player", state: r1.body.state }, {});
   assert.equal(r2.status, 200); assert.equal(r2.body.mode, "naked"); if (r2.after) await r2.after(); // the client's new mode is ignored
   assert.equal((await store.getGame(r1.body.gameId)).mode, "naked");
-  const rewind = await handleChessMove({ moves: r1.body.moves, humanMove: "d4", jev: "O", mode: "naked", state: r1.body.state }, {});
+  // the same move resent from one exchange back is a retry (its response was lost) and goes through; a different move is a rewind
+  const retry = await handleChessMove({ moves: r1.body.moves, humanMove: "d4", jev: "O", mode: "naked", state: r1.body.state }, {});
+  assert.equal(retry.status, 200); assert.equal(retry.body.moves[2], "d4");
+  const rewind = await handleChessMove({ moves: r1.body.moves, humanMove: "c4", jev: "O", mode: "naked", state: r1.body.state }, {});
   assert.equal(rewind.status, 400); assert.match(rewind.body.error, /stale state/);
+  assert.equal((await handleChessMove({ moves: r0.body.moves, humanMove: "e4", jev: "O", mode: "naked", state: r0.body.state }, {})).status, 400); // two exchanges back is not a retry
+  assert.equal((await handleGame({ id: r1.body.gameId }, {}, {})).cache, false); // unfinished: never cached
   // the memory store keeps first-write attribution and marks a mid-game mode change as mixed, like D1
   await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "native", result: null, plies: 4, created_at: 1, user_id: "g_a", name: "Alice" });
   await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "naked", jev: "O", backend: "native", result: "human_wins", plies: 6, created_at: 1, ended_at: 2, user_id: "g_b", name: "Bob" });
@@ -789,4 +795,47 @@ test("records: the mode is sealed into the session, a game cannot be rewound wit
   await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "naked", jev: "O", backend: "native", result: null, plies: 2, created_at: 1 });
   const g2 = await store.getGame("b".repeat(16));
   assert.equal(g2.result, "human_wins"); assert.equal(g2.plies, 6); // an older upsert cannot un-finish or shorten it
+});
+
+// The production SQL, run through node:sqlite behind a D1-shaped shim (prepare/bind/run/first/all).
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import { d1Store } from "./functions/_lib/store.js";
+function fakeD1() {
+  const db = new DatabaseSync(":memory:");
+  db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
+  return { prepare(sql) { const st = db.prepare(sql); return { bind(...args) { const a = args.map((v) => (v === undefined ? null : v)); return {
+    async run() { const r = st.run(...a); return { meta: { changes: Number(r.changes) } }; },
+    async first() { return st.get(...a) ?? null; },
+    async all() { return { results: st.all(...a) }; },
+  }; } }; } };
+}
+test("d1 store: the production SQL keeps first-write attribution, marks a changed mode mixed, counts a game once, attaches and claims", async () => {
+  const store = d1Store(fakeD1());
+  const id = "c".repeat(16);
+  await store.upsertGame({ id, game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1", result: null, plies: 2, created_at: 1 });
+  await store.upsertGame({ id, game: "gomoku", mode: "naked", jev: "O", backend: "native", model: "jev-1", result: null, plies: 4, created_at: 1, user_id: "g_a", name: "Alice" });
+  let g = await store.getGame(id); assert.equal(g.mode, "mixed"); assert.equal(g.plies, 4); assert.equal(g.user_id, "g_a"); assert.equal(g.result, null);
+  const fin = { id, game: "gomoku", mode: "naked", jev: "O", backend: "native", model: "jev-1", result: "human_wins", plies: 6, created_at: 1, ended_at: 9, user_id: "g_b", name: "Bob" };
+  await store.upsertGame(fin); await store.upsertGame(fin); // a replayed final request
+  await store.upsertGame({ id, game: "gomoku", mode: "naked", jev: "O", backend: "native", model: "jev-1", result: null, plies: 2, created_at: 1 }); // an old token's upsert
+  g = await store.getGame(id);
+  assert.equal(g.result, "human_wins"); assert.equal(g.plies, 6); assert.equal(g.ended_at, 9); assert.equal(g.name, "Alice"); assert.equal(g.user_id, "g_a");
+  assert.deepEqual(await store.stats("gomoku"), { games: 1, jev_wins: 0, human_wins: 1, draws: 0 });
+  // two finishing requests for one game: one count
+  const id2 = "d".repeat(16);
+  await store.upsertGame({ id: id2, game: "go", mode: "player", jev: "O", backend: "native", result: null, plies: 10, created_at: 1 });
+  await Promise.all([1, 2].map(() => store.upsertGame({ id: id2, game: "go", mode: "player", jev: "O", backend: "native", result: "jev_wins", plies: 12, created_at: 1, ended_at: 5 })));
+  assert.equal((await store.stats("go")).jev_wins, 1);
+  // attach only while unowned, claim only while unnamed, myGames carries backend, mock never listed, turns readable by ply
+  const id3 = "e".repeat(16);
+  await store.upsertGame({ id: id3, game: "chess", mode: "player", jev: "O", backend: "mock", result: "human_wins", plies: 8, created_at: 2, ended_at: 3 });
+  assert.equal((await store.attach(id3, "g_z", "Zed")).user_id, "g_z"); assert.equal(await store.attach(id3, "g_y", "Yan"), null);
+  assert.equal(await store.claim(id3, "Other"), null);
+  assert.equal((await store.myGames("g_z"))[0].backend, "mock");
+  assert.deepEqual(await store.leaderboard("chess"), []);
+  assert.equal((await store.leaderboard("gomoku"))[0].name, "Alice");
+  await store.addTurn({ game_id: id3, ply: 0, side: "human", move: "e4", board: ["x"], source: "human" });
+  assert.equal((await store.getTurn(id3, 0)).move, "e4"); assert.equal(await store.getTurn(id3, 1), null);
+  assert.equal((await store.getTurns(id3)).length, 1);
 });

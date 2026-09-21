@@ -77,7 +77,7 @@ export async function handleChessMove(body, env = {}) {
     const mv = moves.slice();
     // A session token carries the position (FEN + repetition table) and skips the replay; the move list is
     // then context only. Without one, only an empty list starts a verified game.
-    const s = await openSession(env, state, "chess", moves.length === 0);
+    const s = await openSession(env, state, "chess", moves.length === 0, humanMove);
     if (s.mode) mode = s.mode; else s.mode = mode; // the mode is sealed into the session: the client cannot change it mid-game
     let c;
     if (s.verified && s.pos) {
@@ -98,7 +98,7 @@ export async function handleChessMove(body, env = {}) {
           ok: true, game: "chess", moves: mv, board: C.boardRows(c), fen: c.fen(), turn: c.turn(), inCheck: c.inCheck(),
           legal: status === "playing" && c.turn() === opp ? C.slimLegal(c) : [],
           lastMove: l ? { san: l.san, from: l.from, to: l.to } : null,
-          state: s.verified ? await sealSession(env, "chess", s, mv.length, C.snapshot(c)) : null, gameId: s.verified ? s.id : null, verified: s.verified, owner: user ? user.name : null,
+          state: s.verified ? await sealSession(env, "chess", s, mv.length, C.snapshot(c)) : null, gameId: s.verified ? s.id : null, verified: s.verified, owner: user && mv.length ? user.name : null,
           status, result: st.result, backend: be.kind, mode, jev: jevInfo,
         },
         after: () => record(store, "chess", s, { mode, jev, backend: be.kind, model: jevInfo && jevInfo.model, status, plies: mv.length, user,

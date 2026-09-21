@@ -21,8 +21,8 @@ In Player mode the page shows where Jev's pick ranked in the code heuristic's or
 1-ply evaluation. Forced moves are logged as `forced-win`, `forced-block` and `open-four`
 and cost no call.
 
-Every Jev call's full request payload and raw response are shown in the **API calls**
-panel, one expandable entry per move, with copy buttons.
+Every Jev call's full request payload and raw response are shown under the board, one
+expandable entry per move, with copy buttons.
 
 ## The page
 
