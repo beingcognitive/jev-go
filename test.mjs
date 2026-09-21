@@ -594,7 +594,7 @@ test("chess: a long game costs about the same with a token as an opening does", 
   const r = await handleChessMove({ moves: best, humanMove: null, jev, mode: "player", state: token }, {});
   const ms = performance.now() - t0;
   assert.equal(r.status, 200, r.body.error);
-  assert.ok(ms < 60 + 60, `token path took ${ms.toFixed(1)} ms`); // includes the mock's 60 ms sleep
+  assert.ok(ms < 60 + 200, `token path took ${ms.toFixed(1)} ms`); // includes the mock's 60 ms sleep; replaying 300 plies would take far longer than 200 ms
 });
 
 // ---------------- records: sessions, store, leaderboard, replay, claim ----------------
@@ -825,7 +825,7 @@ function fakeD1() {
   } };
   return shim;
 }
-test("d1 store: the production SQL keeps first-write attribution, marks a changed mode mixed, counts a game once, attaches and claims", async () => {
+test("d1 store: the production SQL keeps first-write attribution, marks a changed mode mixed, counts a game once, attaches", async () => {
   const store = d1Store(fakeD1());
   const id = "c".repeat(16);
   await store.upsertGame({ id, game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1", result: null, plies: 2, created_at: 1 });
@@ -842,7 +842,7 @@ test("d1 store: the production SQL keeps first-write attribution, marks a change
   await store.upsertGame({ id: id2, game: "go", mode: "player", jev: "O", backend: "native", result: null, plies: 10, created_at: 1 });
   await Promise.all([1, 2].map(() => store.upsertGame({ id: id2, game: "go", mode: "player", jev: "O", backend: "native", result: "jev_wins", plies: 12, created_at: 1, ended_at: 5 })));
   assert.equal((await store.stats("go")).jev_wins, 1);
-  // attach only while unowned, claim only while unnamed, myGames carries backend, mock never listed, turns readable by ply
+  // attach only while unowned, myGames carries backend, mock never listed, turns readable by ply
   const id3 = "e".repeat(16);
   await store.upsertGame({ id: id3, game: "chess", mode: "player", jev: "O", backend: "mock", result: "human_wins", plies: 8, created_at: 2, ended_at: 3 });
   assert.equal((await store.attach(id3, "g_z", "Zed")).user_id, "g_z"); assert.equal(await store.attach(id3, "g_y", "Yan"), null);

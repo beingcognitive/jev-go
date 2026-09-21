@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS games (
   model TEXT,                  -- e.g. jev-1.13.0
   result TEXT,                 -- jev_wins | human_wins | draw, NULL while playing
   plies INTEGER NOT NULL,
-  name TEXT,                   -- display name: the signed-in player's, or claimed once by an anonymous winner
+  name TEXT,                   -- display name: the signed-in player's
   user_id TEXT,                -- hashed Google subject id when signed in
   created_at INTEGER NOT NULL,
   ended_at INTEGER

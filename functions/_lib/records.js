@@ -6,19 +6,19 @@ import { backend } from "./jev.js";
 const GAMES = new Set(["gomoku", "go", "chess"]);
 const reply = (status, body) => ({ status, body });
 
-// The schema cannot change between requests of one isolate, so it is probed once and the answer kept.
-let schemaOnce = null;
-export const resetSchemaProbe = () => { schemaOnce = null; };
+// The schema cannot change between requests of one isolate, so it is probed once per database and the answer kept.
+let probes = new WeakMap();
+export const resetSchemaProbe = () => { probes = new WeakMap(); };
 export async function handleLeaderboard(params, query, env = {}) {
   const game = String(query.game || "gomoku");
   if (!GAMES.has(game)) return reply(400, { ok: false, error: "unknown game" });
   const store = storeFor(env);
   const err = (e) => String(e && e.message || e);
-  schemaOnce ??= store.probe().catch(err);
-  const [wins, stats, schema] = await Promise.all([store.leaderboard(game).catch(() => []), store.stats(game).catch(() => null), schemaOnce]);
-  if (schema !== "ok") schemaOnce = null; // a failed probe is retried next time, so a migration shows up without a redeploy
-  // schema: "ok", or the database's own error (then nothing is being recorded); backend tells the page whether play needs a sign-in
-  return reply(200, { ok: true, game, wins, stats: stats || { games: 0, jev_wins: 0, human_wins: 0, draws: 0 }, durable: store.kind === "d1", schema, backend: backend(env).kind });
+  const key = env.DB || store; let probe = probes.get(key); if (!probe) { probe = store.probe().catch(err); probes.set(key, probe); }
+  const [wins, stats, schema] = await Promise.all([store.leaderboard(game).catch(() => null), store.stats(game).catch(() => null), probe]);
+  if (schema !== "ok") probes.delete(key); // a failed probe is retried next time, so a migration shows up without a redeploy
+  // schema: "ok", or the database's own error (then nothing is being recorded); partial: a read failed, so the page must not show an empty board as fact
+  return reply(200, { ok: true, game, wins: wins || [], stats: stats || { games: 0, jev_wins: 0, human_wins: 0, draws: 0 }, partial: !wins || !stats, durable: store.kind === "d1", schema, backend: backend(env).kind });
 }
 
 export async function handleGame(params, query, env = {}) {

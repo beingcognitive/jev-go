@@ -280,7 +280,7 @@ dialog.gate .help{margin:8px 0 0}
     <div class="result" id="result" hidden>
       <div class="rtitle" id="rtitle"></div>
       <div class="rnote" id="rnote"></div>
-      <div class="row"><button class="primary" id="again">Play again</button> <button id="rsign" hidden>Sign in</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
+      <div class="row"><button class="primary" id="again">Play again</button> <button id="share" hidden>Share</button> <a class="link" id="rreplay" hidden>Replay link</a></div>
     </div>
     <div class="replaybar" id="replaybar" hidden>
       <div class="rprow">
@@ -452,7 +452,6 @@ function newGame(jev){
 function startNew(jev="O"){
   if(S&&S.busy) return false;
   if(jev==="X"&&!me&&siteBackend==="native"){ openGate(()=>{ if(startNew("X")) $("menu").close(); }); return false; } // Jev's opening move is a live call in a recorded game
-  if(S&&S.status==="human_wins"&&S.verified&&S.backend==="native"&&!S.owner){ if(!confirm("Start a new game without putting your name on the board?")) return false; }
   newGame(jev); render();
   if(cfg.chess||jev==="X") play(null);
   return true;
@@ -505,12 +504,8 @@ function buildGrid(){
 document.addEventListener("pointerdown",(e)=>{ lastPointer=e.pointerType||"mouse"; },{passive:true});
 // A live game is always attributed: the first touch of the board asks for a sign-in. Practice games (no key) are open.
 function gated(retry){ if(me||!S||S.status!=="playing"||(S.backend||siteBackend)!=="native") return false; openGate(retry); return true; } // backend not known yet: play, and let the server's 401 open the gate
-function openGate(retry,reason){
+function openGate(retry){
   gatePending= typeof retry==="function" ? retry : null; // replayed after a successful sign-in
-  const win=reason==="win";
-  $("gatetitle").textContent= win ? "Put this win on the board" : "Sign in to play";
-  $("gatebody").textContent= win ? "Sign in and this game goes under your Google first name, on the hall of fame. Only a hashed id and your first name are stored, never your email."
-    : "Games against the live Jev are recorded under your Google first name, and a win goes on the hall of fame. Only a hashed id and your first name are stored, never your email.";
   $("gatehelp").textContent= gsiDown ? "Google sign-in could not load here, so the live Jev cannot be played right now." : "";
   renderGsi(); const d=$("gate"); if(!d.open) d.showModal();
 }
@@ -601,7 +596,7 @@ async function play(humanMove,localMove){
   }catch(e){
     $("err").textContent=friendly(e.message);
     if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; }
-    if(e.message==="sign in to play"){ if(me) signedOut(""); openGate(()=>{ if(S===game) play(humanMove,localMove); }); } // a rejected session is dropped first (or the gate has no button), and the move is replayed after the sign-in
+    if(e.message==="sign in to play"){ const had=!!me; if(had){ signedOut("Your sign-in expired. Sign in again to keep your games."); $("err").textContent=friendly("not signed in"); } openGate(()=>{ if(S===game) play(humanMove,localMove); }); } // a rejected session is dropped first (or the gate has no button), and the move is replayed after the sign-in
   }
   S.busy=false; S.pending=null; render();
 }
@@ -725,12 +720,12 @@ function renderResult(){
   else if(S.status==="jev_wins") title= cfg.chess ? (S.result==="checkmate"?"Checkmate. Jev wins.":"Jev wins.") : "Jev wins.";
   else title= cfg.chess ? `Draw: ${S.result||"draw"}.` : "Draw. Board full.";
   $("rtitle").textContent=title;
-  let note="", signin=false, replay=false;
+  let note="", replay=false;
   if(S.backend==="mock"){ note="A practice game against the stand-in opponent. It is saved, but it never counts for the hall of fame."; replay=S.verified; }
   else if(!S.verified) note="This game lost its link to the server, so it is not recorded.";
-  else if(won){ replay=true; if(S.owner) note=`On the board as ${S.owner}.`; else { note="You beat the real Jev. Sign in to put this win under your name."; signin=!me&&!gsiDown; } }
-  else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : (me||gsiDown ? "Saved." : "Sign in to keep this game under your name."); signin=!me&&!gsiDown; }
-  $("rnote").textContent=note; $("rsign").hidden=!signin;
+  else if(won){ replay=true; note= S.owner ? `On the board as ${S.owner}.` : "On the board."; }
+  else { replay=true; note= S.owner ? `Saved to your games as ${S.owner}.` : "Saved."; }
+  $("rnote").textContent=note;
   const a=$("rreplay"); a.hidden=!(replay&&S.gameId); if(S.gameId) a.href=`?replay=${encodeURIComponent(S.gameId)}`;
   $("share").hidden=!(replay&&S.gameId);
 }
@@ -883,7 +878,7 @@ window.gsiReady=function(){
   renderGsi();
 };
 window.gsiFailed=function(){ // the Google script did not load (blocked or offline): say so instead of showing an empty slot
-  gsiDown=true; $("gsi").innerHTML=""; $("rsign").hidden=true;
+  gsiDown=true; $("gsi").innerHTML="";
   $("whohelp").textContent="Google sign-in could not load here, so the live Jev cannot be played right now. Practice games still work.";
 };
 function signedOut(msg){
@@ -928,6 +923,7 @@ async function loadLeaderboard(fresh){
     const r=await fetch(`/api/leaderboard?game=${gameSel}${fresh?"&t="+Date.now():""}`); const d=await r.json();
     if(!d.ok) throw new Error(d.error);
     siteBackend=d.backend||siteBackend; if(d.schema!==undefined) siteSchemaOk=d.schema==="ok";
+    if(d.partial){ $("lbstats").innerHTML=""; $("lb").innerHTML=`<span class="na">Hall of fame unavailable right now.</span>`; return; }
     const st=d.stats;
     $("lbstats").innerHTML=stat(st.games,"recorded games")+stat(st.jev_wins,"Jev wins")+stat(st.human_wins,"human wins")+stat(st.games?Math.round(100*st.human_wins/st.games)+"%":"–","humans win");
     if(!d.wins.length){ $("lb").innerHTML=`<span class="na">Nobody has beaten Jev at this game yet${d.durable?"":" (records on this server are in memory only)"}.</span>`; return; }
@@ -935,7 +931,6 @@ async function loadLeaderboard(fresh){
       d.wins.map((w,i)=>`<tr><td>${i+1}</td><td>${esc(w.name)}</td><td>${w.plies}</td><td>${esc(w.mode)}</td><td>${esc(w.model||"")}</td><td>${w.ended_at?new Date(w.ended_at).toLocaleDateString():""}</td><td><a href="?replay=${esc(w.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`;
   }catch(e){ $("lb").innerHTML=`<span class="na">Hall of fame unavailable (${esc(friendly(e.message))}).</span>`; }
 }
-$("rsign").addEventListener("click",()=>openGate(null,"win"));
 
 // ---- replay ----
 let R=null; // {game, turns, k}
@@ -996,8 +991,11 @@ $("rpprev").addEventListener("click",()=>byHand(R?R.k-1:0)); $("rpnext").addEven
 $("rprange").addEventListener("input",()=>byHand(Number($("rprange").value),true));
 $("rprange").addEventListener("change",()=>byHand(Number($("rprange").value)));
 document.addEventListener("keydown",(e)=>{ // replay keys: never while a dialog is up, never on top of a focused control's own key
-  if(!R||document.querySelector("dialog[open]")||e.target===$("rprange")||(e.target.closest&&e.target.closest("input,textarea,select,button,summary,a[href]"))) return;
-  if(e.key==="ArrowLeft") byHand(R.k-1); if(e.key==="ArrowRight") byHand(R.k+1); if(e.key===" "){ e.preventDefault(); rpPlay(); } });
+  if(!R||document.querySelector("dialog[open]")||e.target===$("rprange")) return;
+  const ctl=e.target.closest&&e.target.closest("input,textarea,select,button,summary,a[href]");
+  if(ctl&&!ctl.closest(".replaybar")) return; // the bar's own buttons keep focus after a click; the arrows must still work
+  if(e.key==="ArrowLeft") byHand(R.k-1); if(e.key==="ArrowRight") byHand(R.k+1);
+  if(e.key===" "&&!(ctl&&ctl.tagName==="BUTTON")){ e.preventDefault(); rpPlay(); } });
 $("rpexit").addEventListener("click",()=>startNew());
 
 $("newgame").addEventListener("click",()=>{ if(startNew("O")) $("menu").close(); });

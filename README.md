@@ -36,7 +36,7 @@ code without a call (a five, an open four, a forced block, mate in one) and are 
   Jev picks from the top twelve. `pass` is offered only after the opponent passed, when nothing
   scores, or near the 200-move cap. Dead stones are not removed at the end, so capture them first.
 - **Chess**: rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0
-  (BSD-2-Clause, `functions/_lib/vendor/`); you are White. For every legal move code computes what
+  (BSD-2-Clause, `functions/_lib/vendor/`); you are White unless you choose "New game, Jev opens". For every legal move code computes what
   it captures, whether the moved piece can be taken back (a static exchange over every attacker and
   defender on the square; pinned pieces are treated as free to move), what it leaves en prise, what
   it threatens, check, mate, castling and development, and ranks them. Code plays mate in one; Jev
@@ -58,8 +58,8 @@ claims before playing them; **Naked** hands Jev every legal point with no facts 
 Built phone-first. The board is measured from its column so it never scrolls sideways. On a phone
 the first tap aims a stone (a ghost appears with a "Place H8" button) and the second tap plays it; a
 mouse previews on hover and plays on click. Jev's five most likely moves are drawn on the board as
-green discs sized by probability after its move, with its own pick's probability on the stone, and
-they fade when you start yours.
+green discs sized by probability after its move, with its own pick's probability on the stone on wider
+screens, and they fade when you start yours.
 
 Before Jev's first move the board stands alone. From the first call on, under the board: the status
 line, Pass or Place when needed, the result card at game end (with Play again, Share and the replay
@@ -80,7 +80,7 @@ of its moves.
 
 ## Sign in with Google
 
-Playing the live Jev needs a Google sign-in: the first touch of the board (or "New game, Jev opens")
+Playing the live Jev needs a Google sign-in: the first touch of the board, Pass, or "New game, Jev opens"
 opens a small dialog with Google's button, and the server refuses a live move without a valid session,
 so every recorded game and every hall-of-fame win carries a name. Practice games (a server with no
 key) stay open.
