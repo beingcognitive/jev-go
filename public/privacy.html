@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy, Beat Jev</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#eef0ea;--ink:#1e211c;--ink-2:#5a6156;--rule:#d4d9cf;--felt:#2f5d3a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#171a16;--ink:#e9ece4;--ink-2:#a3aa9c;--rule:#2f352c;--felt:#5f9c6a}}
+:root[data-theme="dark"]{--paper:#171a16;--ink:#e9ece4;--ink-2:#a3aa9c;--rule:#2f352c;--felt:#5f9c6a}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 "Atkinson Hyperlegible",system-ui,sans-serif;padding:24px 16px 48px}
+main{max-width:64ch;margin:0 auto}
+h1{font:600 clamp(26px,4vw,36px)/1.15 "Fraunces",Georgia,serif;margin:0 0 6px}
+h2{font:600 20px/1.25 "Fraunces",Georgia,serif;margin:28px 0 8px;padding-top:16px;border-top:1px solid var(--rule)}
+p,li{margin:0 0 10px}
+.muted{color:var(--ink-2)}
+a{color:var(--felt)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy</h1>
+  <p class="muted">Beat Jev at Gomoku, Go and chess, at jev-go.chardonn.ai. Last updated 21 September 2026.</p>
+
+  <h2>What the site is</h2>
+  <p>A game page where you play Gomoku, Go or chess against Jev, a decision model made by TypeSafe AI. You can play without an account.</p>
+
+  <h2>What is stored when you play</h2>
+  <p>Finished and in-progress games are recorded on the server: the moves, the board after each move, and what Jev answered for each of its moves, including the request sent to Jev and its response. These records power the hall of fame and the replay pages. They contain no personal information unless you add your name.</p>
+  <p>Your browser keeps a small personal record of your games in its own storage, which never leaves your device.</p>
+
+  <h2>If you sign in with Google</h2>
+  <p>Sign-in is optional. It uses Google's identity only, so we learn your Google account id, your name and your profile picture. We store a hashed form of the account id and your display name so your games and wins can be attributed to you across devices. We do not store your email address, and we never access your Gmail, contacts or any other Google data.</p>
+
+  <h2>What is sent to Jev</h2>
+  <p>To play, the position on the board and the list of moves are sent to TypeSafe AI's Jev API. No personal information is included in those requests.</p>
+
+  <h2>Cookies and tracking</h2>
+  <p>No advertising, no analytics trackers, no third-party cookies. The site is hosted on Cloudflare Pages, which keeps standard server logs.</p>
+
+  <h2>Removing your data</h2>
+  <p>To have your name removed from the hall of fame or your account attribution deleted, contact the developer at the email shown on the Google sign-in consent screen, or open an issue at <a href="https://github.com/beingcognitive/jev-go">github.com/beingcognitive/jev-go</a>.</p>
+
+  <p class="muted"><a href="./">Back to the games</a></p>
+</main>
+</body>
+</html>
