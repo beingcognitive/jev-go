@@ -22,6 +22,7 @@ export function memoryStore() {
     async getGame(id) { return games.get(id) || null; },
     async getTurns(id) { return (turns.get(id) || []).filter(Boolean); },
     async getTurn(id, ply) { return (turns.get(id) || [])[ply] || null; },
+    async probe() { return "ok"; },
     async claim(id, name) {
       const g = games.get(id);
       if (!g || g.result !== "human_wins" || g.name) return null;
@@ -83,6 +84,13 @@ export function d1Store(db) {
     },
     async getGame(id) { return (await db.prepare("SELECT * FROM games WHERE id = ?1").bind(id).first()) || null; },
     async getTurn(id, ply) { return (await db.prepare("SELECT ply, side, move FROM turns WHERE game_id = ?1 AND ply = ?2").bind(id, ply).first()) || null; },
+    // Touches every column the writes use, so a schema that lags behind schema.sql is reported instead of silently losing games.
+    async probe() {
+      await db.prepare("SELECT user_id, backend, model, result, plies, name, ended_at FROM games LIMIT 1").all();
+      await db.prepare("SELECT io, pick, heat FROM turns LIMIT 1").all();
+      await db.prepare("SELECT n FROM counters LIMIT 1").all();
+      return "ok";
+    },
     async getTurns(id) {
       const { results } = await db.prepare("SELECT * FROM turns WHERE game_id = ?1 ORDER BY ply").bind(id).all();
       return results.map((t) => ({ ...t, board: JSON.parse(t.board), verdict: t.verdict ? JSON.parse(t.verdict) : null, heat: t.heat ? JSON.parse(t.heat) : null, io: t.io ? JSON.parse(t.io) : null }));

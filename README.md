@@ -99,6 +99,11 @@ Storage is Cloudflare D1, set up in the dashboard: Workers & Pages → D1 → cr
 D1 binding with variable name `DB` for Production and Preview, and redeploy. Without the binding the
 server keeps records in memory only.
 
+When `schema.sql` gains a column, an existing database needs the matching file under `migrations/`
+run in the same Console tab (`CREATE TABLE IF NOT EXISTS` never alters a table that exists). The
+leaderboard response carries `schema`: `"ok"`, or the database's own error when a column the code
+writes is missing, in which case no game is being recorded until the migration runs.
+
 ## Sign in with Google
 
 Optional. The page shows Google's sign-in button in the top bar and again on the result card; the

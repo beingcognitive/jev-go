@@ -11,8 +11,8 @@ export async function handleLeaderboard(params, query, env = {}) {
   const game = String(query.game || "gomoku");
   if (!GAMES.has(game)) return reply(400, { ok: false, error: "unknown game" });
   const store = storeFor(env);
-  const [wins, stats] = await Promise.all([store.leaderboard(game), store.stats(game)]);
-  return reply(200, { ok: true, game, wins, stats, durable: store.kind === "d1" });
+  const [wins, stats, schema] = await Promise.all([store.leaderboard(game), store.stats(game), store.probe().catch((e) => String(e.message || e))]);
+  return reply(200, { ok: true, game, wins, stats, durable: store.kind === "d1", schema }); // schema: "ok", or the database's own error
 }
 
 export async function handleGame(params, query, env = {}) {
