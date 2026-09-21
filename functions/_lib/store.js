@@ -61,10 +61,10 @@ export function d1Store(db) {
     async upsertGame(g) {
       await db.prepare(
         `INSERT INTO games (id, game, mode, jev, backend, model, result, plies, name, user_id, created_at, ended_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?10, ?11, ?8, NULL)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?9, ?10, ?8, NULL)
          ON CONFLICT(id) DO UPDATE SET mode = CASE WHEN games.mode = ?3 THEN ?3 ELSE 'mixed' END, model = COALESCE(?6, games.model),
-           plies = MAX(games.plies, ?7), name = COALESCE(games.name, ?10), user_id = COALESCE(games.user_id, ?11)`,
-      ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.plies, g.created_at, g.ended_at ?? null, g.name ?? null, g.user_id ?? null).run();
+           plies = MAX(games.plies, ?7), name = COALESCE(games.name, ?9), user_id = COALESCE(games.user_id, ?10)`,
+      ).bind(g.id, g.game, g.mode, g.jev, g.backend, g.model ?? null, g.plies, g.created_at, g.name ?? null, g.user_id ?? null).run(); // parameters 1..10 with no gap: D1 rejects a bound value the statement never names
       if (g.result) {
         const r = await db.prepare("UPDATE games SET result = ?2, ended_at = ?3 WHERE id = ?1 AND result IS NULL").bind(g.id, g.result, g.ended_at ?? Date.now()).run();
         // Counters keep stats() at three row reads instead of a scan; only the request that actually finished the game counts.

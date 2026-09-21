@@ -9,7 +9,7 @@ export function adapt(handler) {
       let body;
       try { body = await request.json(); } catch { return json({ ok: false, error: "invalid JSON" }, 400); }
       const r = await handler(body, env);
-      if (r.after) { const p = r.after().catch(() => {}); if (typeof waitUntil === "function") waitUntil(p); else await p; }
+      if (r.after) { const p = r.after().catch((e) => console.error("record failed:", e && e.message || e)); if (typeof waitUntil === "function") waitUntil(p); else await p; } // visible in the Functions log, never in the response
       return json(r.body, r.status);
     },
     onRequest() {
