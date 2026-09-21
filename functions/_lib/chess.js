@@ -196,4 +196,5 @@ export const truthOf = (analyses) => ({
   mate: analyses.filter((a) => a.mate).map((a) => a.key),
   material: analyses.filter((a) => a.captured && a.gain > 0).map((a) => a.key),
 });
-export const slimLegal = (c) => c.moves({ verbose: true }).map((m) => ({ san: m.san, from: m.from, to: m.to, promotion: m.promotion || null }));
+// `flags` lets the page apply the move locally (k/q castling, e en passant) before the server replies.
+export const slimLegal = (c) => c.moves({ verbose: true }).map((m) => ({ san: m.san, from: m.from, to: m.to, promotion: m.promotion || null, flags: m.flags }));

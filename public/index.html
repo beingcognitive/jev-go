@@ -276,28 +276,48 @@ function onSquare(sq){
   const ch=pieceAt(sq);
   if(S.sel){
     const cands=S.legal.filter(m=>m.from===S.sel&&m.to===sq);
-    if(cands.length){ const m=cands.find(x=>x.promotion==="q")||cands[0]; S.sel=null; play(m.san); return; }
+    if(cands.length){ const m=cands.find(x=>x.promotion==="q")||cands[0]; S.sel=null; play(m.san,m); return; }
     if(ownPiece(ch)&&sq!==S.sel){ S.sel=sq; render(); return; }
     S.sel=null; render(); return;
   }
   if(ownPiece(ch)&&S.legal.some(m=>m.from===sq)){ S.sel=sq; render(); }
 }
-async function play(humanMove){
+const JEV_MIN_GAP=450; // ms between showing your move and showing Jev's reply
+function applyLocalChess(m){
+  const rows=S.board.map(r=>r.split(""));
+  const idx=(sq)=>[8-Number(sq[1]),cfg.cols.indexOf(sq[0])];
+  const [fr,fc]=idx(m.from),[tr,tc]=idx(m.to);
+  let piece=rows[fr][fc]; rows[fr][fc]=".";
+  const f=m.flags||"";
+  if(f.includes("e")) rows[fr][tc]="."; // en passant: the captured pawn sits beside the origin square
+  if(m.promotion) piece= S.human==="X" ? m.promotion.toUpperCase() : m.promotion;
+  rows[tr][tc]=piece;
+  const rook= S.human==="X"?"R":"r";
+  if(f.includes("k")){ rows[tr][7]="."; rows[tr][5]=rook; }
+  if(f.includes("q")){ rows[tr][0]="."; rows[tr][3]=rook; }
+  S.board=rows.map(r=>r.join("")); S.moves=[...S.moves,m.san]; S.lastMove={san:m.san,from:m.from,to:m.to}; S.legal=[]; S.sel=null; S.inCheck=false;
+  S.anim={from:m.from,to:m.to};
+}
+async function play(humanMove,localMove){
+  const snapshot= cfg.chess ? {board:S.board,moves:S.moves,lastMove:S.lastMove,legal:S.legal,inCheck:S.inCheck} : null;
+  if(cfg.chess&&localMove) applyLocalChess(localMove);
+  const t0=performance.now();
   S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
   try{
-    const body={moves:S.moves,humanMove,jev:S.jev,mode:modeSel};
+    const body={moves:snapshot?snapshot.moves:S.moves,humanMove,jev:S.jev,mode:modeSel};
     if(S.game==="gomoku") body.board=S.board;
     if(cfg.chess&&S.token) body.state=S.token;
     let r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
     let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
     if(!d.ok&&d.error==="bad state"&&body.state){ delete body.state; S.token=null; r=await fetch(cfg.endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}); try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); } }
     if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
+    if(cfg.chess&&d.jev){ const wait=JEV_MIN_GAP-(performance.now()-t0); if(wait>0) await new Promise(res=>setTimeout(res,wait)); if(d.lastMove) S.anim={from:d.lastMove.from,to:d.lastMove.to}; }
     S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend; syncRecordBackend(d.backend);
     if(d.captures) S.captures=d.captures; if(d.score) S.score=d.score;
     if(cfg.chess){ S.legal=d.legal||[]; S.inCheck=!!d.inCheck; S.result=d.result||null; S.lastMove=d.lastMove||null; S.sel=null; S.token=d.state||null; }
     if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); scheduleFade(); }
     if(S.status!=="playing") finishGame();
-  }catch(e){ $("err").textContent=e.message; }
+  }catch(e){ $("err").textContent=e.message; if(snapshot&&localMove){ Object.assign(S,snapshot); S.anim=null; } }
   S.busy=false; S.pending=null; render();
 }
 
@@ -376,7 +396,16 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP){
     cell.classList.toggle("sel",S.sel===sq);
     cell.classList.toggle("check",kingSq===sq);
     for(const el of cell.querySelectorAll(".piece,.target,.heat,.cand,.truth,.pickc")) el.remove();
-    if(ch!=="."){ const pc=document.createElement("span"); pc.className="piece "+(ch===ch.toUpperCase()?"w":"b"); pc.textContent=GLYPH[ch]||"?"; cell.appendChild(pc); }
+    if(ch!=="."){
+      const pc=document.createElement("span"); pc.className="piece "+(ch===ch.toUpperCase()?"w":"b"); pc.textContent=GLYPH[ch]||"?"; cell.appendChild(pc);
+      if(S.anim&&S.anim.to===sq){
+        const fromCell=gridEl.querySelector(`.cell[data-key="${S.anim.from}"]`);
+        if(fromCell){ const a=fromCell.getBoundingClientRect(), b=cell.getBoundingClientRect();
+          pc.style.transition="none"; pc.style.transform=`translate(${a.left-b.left}px,${a.top-b.top}px)`; pc.style.zIndex="6";
+          requestAnimationFrame(()=>requestAnimationFrame(()=>{ pc.style.transition="transform .22s ease-out"; pc.style.transform="translate(0,0)"; })); }
+        S.anim=null;
+      }
+    }
     if(targets.has(sq)){ const t=document.createElement("span"); t.className="target"+(ch!=="."?" cap":""); cell.appendChild(t); }
     if(heatSq[sq]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.35+0.55*heatSq[sq]/(pmax||1)).toFixed(2); h.textContent=Math.round(heatSq[sq]*100)+"%"; cell.appendChild(h); }
     else if(candSq.has(sq)){ const cd=document.createElement("span"); cd.className="cand"; cell.appendChild(cd); }
@@ -422,7 +451,7 @@ function render(){
   }
   const you=S.human==="X"?"X (black)":"O (white)";
   let msg;
-  if(S.busy) msg="Jev is thinking…";
+  if(S.busy) msg= cfg.chess&&S.lastMove&&S.moves.length%2!==(S.human==="X"?0:1) ? `You played ${S.lastMove.san}. Jev is thinking…` : "Jev is thinking…";
   else if(S.status==="human_wins") msg= cfg.chess ? `${S.result==="checkmate"?"Checkmate.":"Game over."} You win.` : S.game==="go" ? "Game over. You win." : "You win. Five in a row.";
   else if(S.status==="jev_wins") msg= cfg.chess ? `${S.result==="checkmate"?"Checkmate.":"Game over."} Jev wins.` : S.game==="go" ? "Game over. Jev wins." : "Jev wins.";
   else if(S.status==="draw") msg= cfg.chess ? `Draw: ${S.result||"draw"}.` : "Draw. Board full.";
