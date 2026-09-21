@@ -79,14 +79,10 @@ not posted by a client. Games played without a key (mock) are recorded but never
 - **Replay** (`?replay=<id>` on the page, `GET /api/game/<id>`): step through any recorded game with
   Jev's thoughts on every one of its moves.
 
-Storage is Cloudflare D1. Create it once and bind it (see `wrangler.toml`):
-
-```bash
-npx wrangler d1 create jev-go                                   # copy the database_id into wrangler.toml
-npx wrangler d1 execute jev-go --remote --file=schema.sql       # create the tables
-```
-
-Without the binding the server keeps records in memory only.
+Storage is Cloudflare D1, set up in the dashboard: Workers & Pages → D1 → create a database named
+`jev-go`, run `schema.sql` in its Console tab, then in the Pages project's Settings → Bindings add a
+D1 binding with variable name `DB` for Production and Preview, and redeploy. Without the binding the
+server keeps records in memory only.
 
 ## Layout
 
@@ -126,15 +122,10 @@ npm run cf:dev                   # or the real Pages runtime via wrangler, http:
 
 ## Deploy to Cloudflare Pages
 
-```bash
-npx wrangler login                                   # once
-npx wrangler pages deploy public                     # creates the project "jev-go" on first run
-npx wrangler pages secret put TYPESAFE_API_KEY       # paste the key when prompted
-npx wrangler pages deploy public                     # deploy again so the secret is live
-```
-
-The site lands at `https://jev-go.pages.dev`. Until the secret is set, the deployed page runs
-in mock mode.
+The project is connected to this GitHub repository in the Cloudflare dashboard: every push to `main`
+deploys. Build command empty, output directory `public`. Secrets live in the project's Settings →
+Variables and Secrets: `TYPESAFE_API_KEY` (required for the real Jev) and optionally `STATE_SECRET`.
+Until the key is set, the deployed page runs in mock mode.
 
 ## Cost
 
