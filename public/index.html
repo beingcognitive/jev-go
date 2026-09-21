@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is Jev a good Gomoku player?</title>
+<meta name="description" content="Play Gomoku against TypeSafe's Jev and watch how often it finds wins and forced blocks.">
+<style>
+:root{
+  --bg:#f6f1e7; --panel:#fffaf0; --ink:#1f1a14; --muted:#6b6257; --border:#e5d9c3;
+  --wood:#e2b96f; --wood2:#cfa257; --line:#7a5a2a; --lbl:#3b2a10;
+  --accent:#2563eb; --good:#15803d; --bad:#b91c1c; --warn:#b45309;
+  --cell:min(5.6vw,34px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15120e; --panel:#1f1a14; --ink:#f1e8d8; --muted:#a89b88; --border:#3a3128;
+    --wood:#b9884a; --wood2:#a4763c; --line:#3e2a10; --lbl:#2a1c08;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15120e; --panel:#1f1a14; --ink:#f1e8d8; --muted:#a89b88; --border:#3a3128;
+  --wood:#b9884a; --wood2:#a4763c; --line:#3e2a10; --lbl:#2a1c08;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px}
+header{max-width:1100px;margin:0 auto 12px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:14px}
+main{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){main{grid-template-columns:1fr}}
+.boardwrap{background:linear-gradient(135deg,var(--wood),var(--wood2));padding:10px 10px 12px 6px;border-radius:10px;display:inline-block;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.grid{display:grid;grid-template-columns:22px repeat(15,var(--cell));grid-template-rows:18px repeat(15,var(--cell))}
+.lbl{font-size:11px;color:var(--lbl);display:flex;align-items:center;justify-content:center;user-select:none}
+.cell{position:relative;cursor:pointer}
+.cell::before{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:var(--line);transform:translateY(-.5px)}
+.cell::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line);transform:translateX(-.5px)}
+.cell.c0::before{left:50%}.cell.c14::before{right:50%}
+.cell.r0::after{top:50%}.cell.r14::after{bottom:50%}
+.cell.locked{cursor:default}
+.dot{position:absolute;left:50%;top:50%;width:5px;height:5px;background:var(--line);border-radius:50%;transform:translate(-50%,-50%);z-index:1}
+.stone{position:absolute;inset:10%;border-radius:50%;z-index:3;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.stone.X{background:radial-gradient(circle at 35% 35%,#5a5a5a,#000)}
+.stone.O{background:radial-gradient(circle at 35% 35%,#fff,#cdcdcd);border:1px solid #8d8d8d}
+.stone.pending{opacity:.55}
+.last{position:absolute;left:50%;top:50%;width:22%;height:22%;transform:translate(-50%,-50%);border-radius:50%;background:#e11d48;z-index:4}
+.heat{position:absolute;inset:14%;border-radius:50%;background:var(--accent);z-index:2;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1;color:#fff;font-weight:700}
+.truth{position:absolute;inset:8%;border-radius:50%;border:2px dashed var(--bad);z-index:2}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
+.panel h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.status{font-size:17px;font-weight:600;min-height:24px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+button{font:inherit;font-size:14px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+label.toggle{display:inline-flex;gap:6px;align-items:center;color:var(--muted);font-size:14px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid var(--border);color:var(--muted)}
+.badge.mock{color:var(--warn);border-color:var(--warn)}
+.badge.live{color:var(--good);border-color:var(--good)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
+th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--panel)}
+.ok{color:var(--good)}.miss{color:var(--bad)}.na{color:var(--muted)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px}
+.kv b{font-weight:600;color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}
+.stat{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px}
+.stat .n{font-size:20px;font-weight:700}.stat .l{font-size:12px;color:var(--muted)}
+.err{color:var(--bad);font-size:13px;margin-top:6px;white-space:pre-wrap}
+.tablewrap{overflow:auto;max-height:280px}
+footer{max-width:1100px;margin:16px auto 0;color:var(--muted);font-size:12px}
+code{font-size:12px;background:var(--bg);padding:1px 4px;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Is Jev a good Gomoku player?</h1>
+  <div class="sub">You play against TypeSafe's Jev, a System One model with no lookahead. Code lists every empty point as a Choice option, asks three questions in one call, and verifies Jev's win and block claims before playing them.</div>
+</header>
+<main>
+  <div><div class="boardwrap"><div class="grid" id="grid" aria-label="Gomoku board"></div></div></div>
+  <div>
+    <div class="panel">
+      <div class="status" id="status"></div>
+      <div class="row">
+        <button class="primary" id="newgame">New game · you start</button>
+        <button id="jevopens">New game · Jev starts</button>
+        <span class="badge" id="backend">backend: …</span>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="assist"> Assisted mode: annotate each option with line facts computed by code</label>
+      </div>
+      <div class="err" id="err"></div>
+    </div>
+    <div class="panel">
+      <h2>Jev's last thought</h2>
+      <div id="thought" class="kv"><span class="na">No move yet.</span></div>
+    </div>
+    <div class="panel">
+      <h2>This game</h2>
+      <div class="stats" id="gamestats"></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>#</th><th>Played</th><th>Via</th><th>Conf</th><th>Win detect</th><th>Block detect</th><th>ms</th><th>Tokens</th></tr></thead>
+        <tbody id="turns"></tbody>
+      </table></div>
+    </div>
+    <div class="panel">
+      <h2>All games on this browser</h2>
+      <div class="stats" id="alltime"></div>
+      <div class="row"><button id="resetscore">Reset record</button></div>
+    </div>
+  </div>
+</main>
+<footer>Blue discs are Jev's top-5 best-move probabilities. A dashed red ring marks a forced point Jev missed or misidentified. "Via" says which answer was played: a verified win, a verified block, or the best-move answer. Confidence is TypeSafe's shape formula over the option set, so with 200+ options it runs low by construction.</footer>
+<script>
+const SIZE=15, COLS="ABCDEFGHIJKLMNO", LS="jev-gomoku-v1";
+const $=(id)=>document.getElementById(id);
+const gridEl=$("grid");
+let S=null;
+
+const DEFAULT_SCORE={games:0,jev:0,human:0,draw:0,turns:0,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenTurns:0};
+function loadScore(){ try{ return Object.assign({},DEFAULT_SCORE,JSON.parse(localStorage.getItem(LS)||"{}")); }catch{ return {...DEFAULT_SCORE}; } }
+function saveScore(){ try{ localStorage.setItem(LS,JSON.stringify(score)); }catch{} }
+let score=loadScore();
+
+function newGame(jev){
+  S={ board:Array.from({length:SIZE},()=>".".repeat(SIZE)), moves:[], jev, human: jev==="O"?"X":"O",
+      status:"playing", turns:[], last:null, pending:null, busy:false, backend:null, gameCounted:false };
+}
+function counts(){ let X=0,O=0; for(const r of S.board) for(const ch of r){ if(ch==="X")X++; else if(ch==="O")O++; } return {X,O}; }
+function toMove(){ const {X,O}=counts(); return X===O?"X":"O"; }
+function keyOf(r,c){ return COLS[c]+(SIZE-r); }
+function cellAt(k){ const c=COLS.indexOf(k[0]); const r=SIZE-Number(k.slice(1)); return {r,c}; }
+
+function buildGrid(){
+  gridEl.innerHTML="";
+  gridEl.appendChild(Object.assign(document.createElement("div"),{className:"lbl"}));
+  for(let c=0;c<SIZE;c++){ const d=document.createElement("div"); d.className="lbl"; d.textContent=COLS[c]; gridEl.appendChild(d); }
+  for(let r=0;r<SIZE;r++){
+    const rl=document.createElement("div"); rl.className="lbl"; rl.textContent=SIZE-r; gridEl.appendChild(rl);
+    for(let c=0;c<SIZE;c++){
+      const cell=document.createElement("div");
+      cell.className=`cell r${r} c${c}`; cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=keyOf(r,c);
+      cell.title=keyOf(r,c);
+      if([3,7,11].includes(r)&&[3,7,11].includes(c)){ const dot=document.createElement("span"); dot.className="dot"; cell.appendChild(dot); }
+      cell.addEventListener("click",()=>onCell(r,c));
+      gridEl.appendChild(cell);
+    }
+  }
+}
+
+function onCell(r,c){
+  if(!S||S.busy||S.status!=="playing") return;
+  if(toMove()!==S.human) return;
+  if(S.board[r][c]!==".") return;
+  play(keyOf(r,c));
+}
+
+async function play(humanMove){
+  S.busy=true; S.pending=humanMove; $("err").textContent=""; render();
+  try{
+    const r=await fetch("/api/move",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({board:S.board,moves:S.moves,humanMove,jev:S.jev,assist:$("assist").checked})});
+    let d=null; try{ d=await r.json(); }catch{ throw new Error("HTTP "+r.status); }
+    if(!d.ok) throw new Error(d.error||("HTTP "+r.status));
+    S.board=d.board; S.moves=d.moves; S.status=d.status; S.backend=d.backend;
+    if(d.jev){ S.turns.push(d.jev); S.last=d.jev; addTurnToScore(d.jev); }
+    if(S.status!=="playing") finishGame();
+  }catch(e){ $("err").textContent=e.message; }
+  S.busy=false; S.pending=null; render();
+}
+
+function addTurnToScore(t){
+  score.turns++; score.latency+=t.latencyMs||0;
+  if(t.usage&&typeof t.usage.input==="number"){ score.tokens+=t.usage.input; score.tokenTurns++; }
+  if(t.truth.win.length){ score.winOpp++; if(t.verdict.win==="found") score.winFound++; }
+  if(t.truth.block.length){ score.blockNeed++; if(t.verdict.block==="found") score.blockFound++; }
+  if(t.verdict.win==="false") score.falseClaims++;
+  if(t.verdict.block==="false") score.falseClaims++;
+  saveScore();
+}
+function finishGame(){
+  if(S.gameCounted) return; S.gameCounted=true;
+  score.games++; if(S.status==="jev_wins") score.jev++; else if(S.status==="human_wins") score.human++; else score.draw++;
+  saveScore();
+}
+
+function verdictCell(v,truthLen){
+  if(v==="found") return `<span class="ok">✓ found</span>`;
+  if(v==="missed") return `<span class="miss">✗ missed (${truthLen})</span>`;
+  if(v==="false") return `<span class="miss">✗ false claim</span>`;
+  return `<span class="na">– none</span>`;
+}
+const pct=(a,b)=> b? Math.round(100*a/b)+"%" : "–";
+const stat=(n,l)=>`<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+
+function render(){
+  const {X,O}=counts();
+  const lastKey=S.moves.length? S.moves[S.moves.length-1].split(" ")[1] : null;
+  const heat={}; let pmax=0;
+  if(S.last){ for(const [k,p] of S.last.answers.best_move.top){ heat[k]=p; pmax=Math.max(pmax,p); } }
+  const truthRing=new Set();
+  if(S.last){
+    if(S.last.verdict.win!=="found"&&S.last.truth.win.length) S.last.truth.win.forEach(k=>truthRing.add(k));
+    if(S.last.verdict.block!=="found"&&S.last.truth.block.length) S.last.truth.block.forEach(k=>truthRing.add(k));
+  }
+  const locked=S.busy||S.status!=="playing"||toMove()!==S.human;
+  for(const cell of gridEl.querySelectorAll(".cell")){
+    const r=+cell.dataset.r, c=+cell.dataset.c, k=cell.dataset.key;
+    cell.classList.toggle("locked",locked);
+    for(const el of cell.querySelectorAll(".stone,.last,.heat,.truth")) el.remove();
+    const ch=S.board[r][c];
+    if(ch!=="."){
+      const st=document.createElement("span"); st.className="stone "+ch; cell.appendChild(st);
+      if(k===lastKey){ const l=document.createElement("span"); l.className="last"; cell.appendChild(l); }
+    } else if(S.pending===k){
+      const st=document.createElement("span"); st.className="stone pending "+S.human; cell.appendChild(st);
+    } else {
+      if(heat[k]!==undefined){ const h=document.createElement("span"); h.className="heat"; h.style.opacity=(0.18+0.7*heat[k]/(pmax||1)).toFixed(2); h.textContent=Math.round(heat[k]*100)+"%"; cell.appendChild(h); }
+      if(truthRing.has(k)){ const t=document.createElement("span"); t.className="truth"; cell.appendChild(t); }
+    }
+  }
+  const you=S.human==="X"?"X (black)":"O (white)";
+  let msg;
+  if(S.busy) msg="Jev is thinking…";
+  else if(S.status==="human_wins") msg="You win. Five in a row.";
+  else if(S.status==="jev_wins") msg="Jev wins.";
+  else if(S.status==="draw") msg="Draw. Board full.";
+  else msg=`Your move. You are ${you}.`;
+  $("status").textContent=msg;
+  const be=S.backend; const badge=$("backend");
+  badge.textContent="backend: "+(be||"…"); badge.className="badge "+(be==="mock"?"mock":be?"live":"");
+  if(be==="mock") badge.title="No API key set: heuristic opponent, not Jev.";
+  $("newgame").disabled=S.busy; $("jevopens").disabled=S.busy;
+
+  const t=S.last;
+  if(t){
+    const fmtTop=(a)=>a.top.map(([k,p])=>`${k} ${Math.round(p*100)}%`).join(", ");
+    $("thought").innerHTML=
+      `<b>played</b><span>${t.move} via <strong>${t.source}</strong>${t.assist?" (assisted)":""}</span>`+
+      `<b>win_now</b><span>${t.answers.win_now.choice} · conf ${t.answers.win_now.confidence} · ${verdictCell(t.verdict.win,t.truth.win.length)}${t.truth.win.length?` · truth: ${t.truth.win.join(" ")}`:""}</span>`+
+      `<b>must_block</b><span>${t.answers.must_block.choice} · conf ${t.answers.must_block.confidence} · ${verdictCell(t.verdict.block,t.truth.block.length)}${t.truth.block.length?` · truth: ${t.truth.block.join(" ")}`:""}</span>`+
+      `<b>best_move</b><span>${fmtTop(t.answers.best_move)} · conf ${t.answers.best_move.confidence}</span>`+
+      `<b>call</b><span>${t.latencyMs} ms · ${t.optionCount} options · ${t.usage&&t.usage.input!=null?t.usage.input+" in / "+t.usage.output+" out tokens":"tokens n/a"} · ${t.model||""}</span>`;
+  } else {
+    $("thought").innerHTML=`<span class="na">No move yet.</span>`;
+  }
+
+  const g={turns:S.turns.length,winOpp:0,winFound:0,blockNeed:0,blockFound:0,falseClaims:0,latency:0,tokens:0,tokenTurns:0};
+  for(const x of S.turns){
+    g.latency+=x.latencyMs||0;
+    if(x.usage&&typeof x.usage.input==="number"){ g.tokens+=x.usage.input; g.tokenTurns++; }
+    if(x.truth.win.length){ g.winOpp++; if(x.verdict.win==="found") g.winFound++; }
+    if(x.truth.block.length){ g.blockNeed++; if(x.verdict.block==="found") g.blockFound++; }
+    if(x.verdict.win==="false") g.falseClaims++; if(x.verdict.block==="false") g.falseClaims++;
+  }
+  $("gamestats").innerHTML=
+    stat(g.turns,"Jev moves")+
+    stat(`${g.winFound}/${g.winOpp}`,"wins found")+
+    stat(`${g.blockFound}/${g.blockNeed}`,"forced blocks found")+
+    stat(g.falseClaims,"false claims")+
+    stat(g.turns?Math.round(g.latency/g.turns):"–","avg ms")+
+    stat(g.tokenTurns?Math.round(g.tokens/g.tokenTurns):"–","avg input tokens");
+  $("turns").innerHTML=S.turns.map((x,i)=>`<tr><td>${i+1}</td><td>${x.move}</td><td>${x.source}</td><td>${x.answers.best_move.confidence}</td><td>${verdictCell(x.verdict.win,x.truth.win.length)}</td><td>${verdictCell(x.verdict.block,x.truth.block.length)}</td><td>${x.latencyMs}</td><td>${x.usage&&x.usage.input!=null?x.usage.input:"–"}</td></tr>`).join("");
+
+  $("alltime").innerHTML=
+    stat(score.games,"games")+
+    stat(`${score.jev} · ${score.human} · ${score.draw}`,"Jev · you · draw")+
+    stat(pct(score.jev,score.games),"Jev win rate")+
+    stat(pct(score.winFound,score.winOpp),`wins found (${score.winOpp})`)+
+    stat(pct(score.blockFound,score.blockNeed),`blocks found (${score.blockNeed})`)+
+    stat(score.falseClaims,"false claims")+
+    stat(score.turns?Math.round(score.latency/score.turns):"–","avg ms");
+}
+
+$("newgame").addEventListener("click",()=>{ newGame("O"); render(); });
+$("jevopens").addEventListener("click",()=>{ newGame("X"); render(); play(null); });
+$("resetscore").addEventListener("click",()=>{ score={...DEFAULT_SCORE}; saveScore(); render(); });
+
+buildGrid(); newGame("O"); render();
+</script>
+</body>
+</html>

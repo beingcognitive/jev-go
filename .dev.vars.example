@@ -1,0 +1,5 @@
+# Copy to .dev.vars (read by `wrangler pages dev` and by `node dev.mjs`). Leave empty for MOCK mode.
+# TypeSafe native key, from https://console.typesafe.ai/keys
+TYPESAFE_API_KEY=
+# Optional alternative: Vercel AI Gateway key (only used if TYPESAFE_API_KEY is empty)
+AI_GATEWAY_API_KEY=

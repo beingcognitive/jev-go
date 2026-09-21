@@ -1,0 +1,13 @@
+{
+  "name": "hello-jev-gomoku",
+  "private": true,
+  "type": "module",
+  "description": "Is Jev a good Gomoku player? Human vs TypeSafe Jev on Cloudflare Pages.",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "test": "node --test test.mjs",
+    "cf:dev": "npx wrangler pages dev public",
+    "deploy": "npx wrangler pages deploy public"
+  },
+  "engines": { "node": ">=20" }
+}
