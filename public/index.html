@@ -69,7 +69,7 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .chip.warn{color:var(--warn);border-color:var(--warn)}
 
 /* ----- the board is the hero ----- */
-.boardwrap{background:linear-gradient(160deg,var(--wood),var(--wood-2));padding:12px 12px 14px 8px;border-radius:6px;display:inline-block;max-width:100%;box-shadow:0 18px 40px -18px rgba(30,33,28,.55),inset 0 0 0 1px rgba(255,255,255,.18)}
+.boardwrap{position:relative;background:linear-gradient(160deg,var(--wood),var(--wood-2));padding:12px 12px 14px 8px;border-radius:6px;display:inline-block;max-width:100%;box-shadow:0 18px 40px -18px rgba(30,33,28,.55),inset 0 0 0 1px rgba(255,255,255,.18)}
 .grid{display:grid;touch-action:manipulation}
 .lbl{font-size:11px;color:var(--coord);display:flex;align-items:center;justify-content:center;user-select:none;font-variant-numeric:tabular-nums}
 .cell{position:relative;cursor:pointer}
@@ -105,6 +105,13 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .ghost.aim{opacity:.85;box-shadow:0 0 0 2px var(--felt),0 1px 3px rgba(0,0,0,.35)}
 /* chess */
 .boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25)}
+/* replay countdown: three beats over the empty board, then it plays itself; a tap or a key skips */
+.countdown{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;text-align:center;border-radius:6px;background:rgba(30,33,28,.34);cursor:pointer;color:var(--paper)}
+.countdown b{font:700 clamp(84px,30vw,150px)/1 var(--serif);font-variation-settings:"opsz" 144;font-variant-numeric:tabular-nums;text-shadow:0 8px 28px rgba(0,0,0,.45);animation:pop .7s ease-out}
+.countdown b.go{font-size:clamp(56px,18vw,96px);letter-spacing:.02em}
+.countdown p{margin:0;max-width:420px;font-size:15px;line-height:1.4;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+.countdown small{font-size:13px;opacity:.85;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+@keyframes pop{from{transform:scale(1.5);opacity:0}to{transform:none;opacity:1}}
 .grid.chess .cell::before,.grid.chess .cell::after{display:none}
 .grid.chess .cell.light{background:#efdcbb}.grid.chess .cell.dark{background:#a97c55}
 .grid.chess .cell.lastmv{box-shadow:inset 0 0 0 100px var(--felt-soft)}
@@ -251,7 +258,7 @@ dialog.gate h2{font:600 22px/1.2 var(--serif);font-variation-settings:"opsz" 36;
 dialog.gate p{margin:0 0 14px;font-size:15px}
 dialog.gate .help{margin:8px 0 0}
 /* last, so it wins every cascade tie above */
-@media (prefers-reduced-motion:reduce){details.io summary::before,details.panel>summary::after,.legend-d>summary::before{transition:none}.ghost,.ghost.aim,.stone.new,.grid.chess .cell.check.justchecked{animation:none}.captured{display:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick,.pickc{transition:none}}
+@media (prefers-reduced-motion:reduce){details.io summary::before,details.panel>summary::after,.legend-d>summary::before{transition:none}.countdown b{animation:none}.ghost,.ghost.aim,.stone.new,.grid.chess .cell.check.justchecked{animation:none}.captured{display:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick,.pickc{transition:none}}
 </style>
 </head>
 <body>
@@ -707,7 +714,7 @@ function renderChess(locked,heat,pmax,candSet,truthRing,pickP,heatRank){
 // the candidate carried. Forced moves say so; the researcher's detail lives in "Jev's candidates".
 function renderJevCard(pickP){
   const t=S.last, card=$("jevcard");
-  card.hidden=!t&&S.status!=="replay"; // nothing to say before Jev's first move
+  card.hidden=(!t&&S.status!=="replay")||!!rpCount; // nothing to say before Jev's first move, nor under the replay countdown
   if(!t){ card.innerHTML=`<span class="na">The human played this move; Jev's answer is the next one.</span>`; return; }
   const cand=(t.candidates||[]).find(c=>c.key===t.move);
   const why=(cand?cand.desc:(t.note||"")).replace(/^pass\.\s*/,""); // the pass option's text starts with its own name
@@ -951,12 +958,42 @@ async function startReplay(id){
   const r=await fetch(`/api/game/${encodeURIComponent(id)}?io=1`); const d=await r.json();
   if(!d.ok) throw new Error(d.error||"replay not found");
   gameSel=d.game.game; cfg=CFG[gameSel]; newGame(d.game.jev); S.status="replay"; S.backend=d.game.backend;
-  R={game:d.game,turns:d.turns,k:d.turns.length-1};
+  R={game:d.game,turns:d.turns,k:d.turns.length-1,start:S.board}; // start: the position before the first move, shown under the countdown
   $("replaybar").hidden=false; $("rprange").max=String(Math.max(0,d.turns.length-1)); $("rprange").value=String(R.k);
   showReplay();
+  replayCountdown();
+}
+// Three beats over the first position, then the replay plays itself. A tap on the board or any key skips the count;
+// leaving the replay or stepping by hand cancels it.
+let rpCount=null;
+function replayCountdown(){
+  if(!R||!R.turns.length) return;
+  rpStop(); R.k=0; S.board=R.start; S.moves=[]; S.turns=[]; S.last=null; S.captures={X:0,O:0}; $("rprange").value="0"; $("replaycap").textContent=""; // the position before the first move, no card, no calls; the first stone lands on "go"
+  const wrap=document.querySelector(".boardwrap");
+  const overlay=document.createElement("div"); overlay.className="countdown"; overlay.setAttribute("role","status");
+  const num=document.createElement("b"), what=document.createElement("p"), hint=document.createElement("small");
+  const g=R.game, n=R.turns.length;
+  const res= g.result==="human_wins" ? `${g.name||"A human"} beat Jev` : g.result==="jev_wins" ? `Jev beat ${g.name||"a human"}` : "A draw";
+  what.textContent=`${res} at ${cfg.name||gameSel} in ${n} moves. Jev's thoughts show on every one of its moves.`;
+  hint.textContent="tap or press any key to skip";
+  overlay.append(num,what,hint); wrap.appendChild(overlay);
+  let count=3, tick=0, current=num;
+  const cancel=()=>{ clearTimeout(tick); overlay.remove(); rpCount=null; if(R&&S.board===R.start) stepReplay(0); }; // never leave the empty board behind
+  const go=()=>{ cancel(); if(!R) return; stepReplay(0); if(!rpTimer) rpPlay(); };
+  overlay.addEventListener("click",go);
+  const beat=()=>{
+    const fresh=document.createElement("b"); // a new element each beat, so the pop restarts
+    if(count>0){ fresh.textContent=String(count--); tick=setTimeout(beat,800); }
+    else { fresh.textContent="go"; fresh.className="go"; tick=setTimeout(go,450); }
+    current.replaceWith(fresh); current=fresh;
+  };
+  rpCount={cancel,go};
+  render(); // full render: the card and the call log go quiet while the count runs
+  beat();
 }
 function leaveReplay(){
   if(!R) return;
+  if(rpCount) rpCount.cancel();
   rpStop(); R=null; $("replaybar").hidden=true; $("replaycap").textContent="";
   if(location.search) history.replaceState(null,"","./");
 }
@@ -997,7 +1034,7 @@ function rpPlay(){
   const b=$("rpplay"); b.textContent="❚❚"; b.title=b.ariaLabel="Pause";
   rpTimer=setInterval(()=>{ if(!R||R.k>=R.turns.length-1){ rpStop(); return; } stepReplay(R.k+1); },RP_STEP_MS);
 }
-const byHand=(k,light)=>{ rpStop(); stepReplay(k,light); };
+const byHand=(k,light)=>{ if(rpCount) rpCount.cancel(); rpStop(); stepReplay(k,light); };
 $("rpplay").addEventListener("click",rpPlay);
 $("rpfirst").addEventListener("click",()=>byHand(0)); $("rplast").addEventListener("click",()=>byHand(1e9));
 $("rpprev").addEventListener("click",()=>byHand(R?R.k-1:0)); $("rpnext").addEventListener("click",()=>byHand(R?R.k+1:0));
@@ -1005,6 +1042,7 @@ $("rprange").addEventListener("input",()=>byHand(Number($("rprange").value),true
 $("rprange").addEventListener("change",()=>byHand(Number($("rprange").value)));
 document.addEventListener("keydown",(e)=>{ // replay keys: never while a dialog is up, never on top of a focused control's own key
   if(!R||document.querySelector("dialog[open]")||e.target===$("rprange")) return;
+  if(rpCount){ e.preventDefault(); rpCount.go(); return; } // any key skips the countdown
   const ctl=e.target.closest&&e.target.closest("input,textarea,select,button,summary,a[href]");
   if(ctl&&!ctl.closest(".replaybar")) return; // the bar's own buttons keep focus after a click; the arrows must still work
   if(e.key==="ArrowLeft") byHand(R.k-1); if(e.key==="ArrowRight") byHand(R.k+1);

@@ -84,9 +84,9 @@ latency, tokens). The board stays centred in one column for the whole game; only
 column and puts those two panels beside the board.
 
 The top bar holds the menu (new game, Jev opens, your games, hall of fame, about), the game switcher,
-this game's numbers in the centre on wide screens, and sign-in. A replay (`?replay=<id>`) plays
-itself with Play/Pause at about a move a second, steps by hand, and shows Jev's thoughts on every one
-of its moves.
+this game's numbers in the centre on wide screens, and sign-in. A replay (`?replay=<id>`) counts
+three beats over the empty board and then plays itself at about a move a second; it pauses for a hand
+step, a tap or a key skips the count, and Jev's thoughts show on every one of its moves.
 
 <p>
 <img src="docs/img/home-phone.png" alt="The page on a phone" width="300">
