@@ -132,6 +132,48 @@ export function score(board) {
 const ordinal = (n) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
 const LINE_BONUS = { 1: -4, 2: -1, 3: 2, 4: 2, 5: 1 };
 
+// A greedy chase read for the group holding (r,c), `opp` to move: the attacker fills the liberty that leaves the
+// group fewest liberties, the defender extends (or captures an adjacent attacker in atari) for the most, until the
+// group has four liberties ("escaped"), is captured, or the read runs out ("unclear"). Ladders and simple nets
+// resolve within a few moves; anything subtler is left unclear. Boards are copied by tryMove; nothing is mutated.
+export function chase(board, r, c, me, opp, maxIter = 16) {
+  let b = board;
+  for (let i = 0; i < maxIter; i++) {
+    const g = group(b, r, c);
+    if (g.liberties.size >= 4) return "escaped";
+    if (g.liberties.size <= 1) return "captured";
+    let best = null, bestLibs = Infinity;
+    for (const id of g.liberties) {
+      const t = tryMove(b, Math.floor(id / SIZE), id % SIZE, opp, null);
+      if (t.error) continue;
+      const libs = t.board[r][c] === me ? group(t.board, r, c).liberties.size : 0;
+      if (libs < bestLibs) { bestLibs = libs; best = t.board; }
+    }
+    if (!best) return "escaped";
+    if (bestLibs === 0) return "captured";
+    b = best;
+    const g2 = group(b, r, c);
+    if (g2.liberties.size >= 4) return "escaped";
+    const tries = new Set(g2.liberties);
+    for (const [x, y] of g2.stones) for (const [nx, ny] of N4(x, y)) {
+      if (b[nx][ny] !== opp) continue;
+      const og = group(b, nx, ny);
+      if (og.liberties.size === 1) for (const id of og.liberties) tries.add(id);
+    }
+    let bestD = null, bestDL = -1;
+    for (const id of tries) {
+      const t = tryMove(b, Math.floor(id / SIZE), id % SIZE, me, null);
+      if (t.error || t.board[r][c] !== me) continue;
+      const libs = group(t.board, r, c).liberties.size;
+      if (libs > bestDL) { bestDL = libs; bestD = t.board; }
+    }
+    if (bestDL <= 1) return "captured";
+    if (bestDL >= 4) return "escaped";
+    b = bestD;
+  }
+  return "unclear";
+}
+
 export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   const t = tryMove(board, r, c, me, history);
   if (t.error) return null;
@@ -148,17 +190,22 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   }
   const own = group(after, r, c);
   const libsAfter = own.liberties.size;
-  // Any own group that was in atari and is out of it afterwards, including ones rescued by
-  // capturing the attacker, which need not touch (r,c).
-  let saved = 0;
+  // Every own group short of liberties (one or two) before the move, including ones helped by capturing the
+  // attacker, which need not touch (r,c): saved (out of atari, and the chase read does not capture it), doomed
+  // (out of atari only into a losing chase), or rescued (from two liberties to three or more). Groups left short
+  // are listed once in the state, not on every option.
+  let saved = 0, doomed = 0, rescued = 0;
   const seenSaved = new Set();
   for (let x = 0; x < SIZE; x++) for (let y = 0; y < SIZE; y++) {
     if (board[x][y] !== me || seenSaved.has(x * SIZE + y)) continue;
     const g = group(board, x, y);
     for (const [a, b] of g.stones) seenSaved.add(a * SIZE + b);
-    if (g.liberties.size !== 1) continue;
+    if (g.liberties.size > 2) continue;
     const [a, b] = g.stones[0];
-    if (after[a][b] === me && group(after, a, b).liberties.size >= 2) saved += g.stones.length;
+    if (after[a][b] !== me) continue;
+    const libs = group(after, a, b).liberties.size;
+    if (g.liberties.size === 1 && libs >= 2) { if (libs === 2 && chase(after, a, b, me, opp) === "captured") doomed += g.stones.length; else saved += g.stones.length; }
+    else if (g.liberties.size === 2 && libs >= 3) rescued += g.stones.length;
   }
   let atari = 0, atariGroups = 0;
   const seenAfter = new Set();
@@ -168,30 +215,37 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
     for (const [a, b] of g.stones) seenAfter.add(a * SIZE + b);
     if (g.liberties.size === 1) { atari += g.stones.length; atariGroups++; }
   }
-  const selfAtari = libsAfter === 1 && t.captured === 0;
+  const selfAtari = libsAfter === 1 && own.stones.length > t.captured; // a capture bigger than the group is a trade; smaller, it is a snapback
   const connects = ownBefore.length >= 2 ? ownBefore.length : 0;
   const neighborsInBounds = N4(r, c).length;
   const eyeFill = ownNeighbors === neighborsInBounds && t.captured === 0;
   const line = Math.min(r, c, SIZE - 1 - r, SIZE - 1 - c) + 1;
   const lp = lastKey ? fromKey(lastKey) : null;
   const nearLast = !!(lp && Math.max(Math.abs(lp.r - r), Math.abs(lp.c - c)) <= 1);
-  let scoreV = t.captured * 12 + saved * 10 + atari * 4 + connects * 2 + Math.min(libsAfter, 4) + (LINE_BONUS[line] || 0) + oppNeighbors * 0.5 + (nearLast ? 1 : 0);
-  if (selfAtari) scoreV -= own.stones.length >= 2 ? 15 : 10;
+  let scoreV = t.captured * 12 + saved * 10 + rescued * 4 - doomed * 2 + atari * 4 + connects * 2 + Math.min(libsAfter, 4) + (LINE_BONUS[line] || 0) + oppNeighbors * 0.5 + (nearLast ? 1 : 0);
+  if (selfAtari) scoreV -= 10 + 5 * Math.min(own.stones.length, 8);
   if (eyeFill) scoreV -= 25;
   const parts = [];
   if (t.captured) parts.push(`captures ${t.captured} ${opp} stone${t.captured > 1 ? "s" : ""}`);
   if (saved) parts.push(`saves ${saved} ${me} stone${saved > 1 ? "s" : ""} from atari`);
+  if (doomed) parts.push(`cannot save the ${doomed} ${me} stone${doomed > 1 ? "s" : ""} in atari: ${opp} captures ${doomed > 1 ? "them" : "it"} in the chase`);
+  if (rescued) parts.push(`gives ${rescued} ${me} stone${rescued > 1 ? "s" : ""} a third liberty (they were one move from atari)`);
   if (atari) parts.push(`puts ${atari} ${opp} stone${atari > 1 ? "s" : ""} in atari`);
   if (connects) parts.push(`connects ${connects} ${me} groups`);
-  if (selfAtari) parts.push(`self-atari (${own.stones.length} stone${own.stones.length > 1 ? "s" : ""} left with one liberty)`);
+  if (selfAtari) parts.push(`self-atari (${own.stones.length} stone${own.stones.length > 1 ? "s" : ""} left with one liberty${t.captured ? ", so the capture can be taken straight back" : ""})`);
   if (eyeFill) parts.push(`fills own eye`);
   parts.push(`${ordinal(line)} line`);
   parts.push(`${libsAfter} libert${libsAfter === 1 ? "y" : "ies"} after`);
   if (oppNeighbors) parts.push(`touches ${oppNeighbors} ${opp} stone${oppNeighbors > 1 ? "s" : ""}`);
-  return { key: key(r, c), r, c, captured: t.captured, capturedKeys: t.capturedKeys, saved, atari, atariGroups, connects, selfAtari, eyeFill, line, libsAfter, oppNeighbors, nearLast, score: scoreV, desc: parts.join("; ") };
+  return { key: key(r, c), r, c, captured: t.captured, capturedKeys: t.capturedKeys, saved, doomed, rescued, atari, atariGroups, connects, selfAtari, eyeFill, line, libsAfter, oppNeighbors, nearLast, score: scoreV, desc: parts.join("; ") };
 }
 
-export const PASS_DESC = (opp) => `pass. If ${opp} also passes, the game ends and is scored by area (Chinese rules, komi ${KOMI}). Dead stones are not removed, so capture them first.`;
+// The pass option always carries the count as it stands, because passing can end the game on it.
+export const PASS_DESC = (opp, board, me) => {
+  const s = board ? score(board) : null;
+  const now = s ? ` Counted right now: black ${s.black}, white ${s.white} (komi ${KOMI} included), so ${s.winner === me ? "you would win" : "you would LOSE"} by ${s.margin}.` : "";
+  return `pass. If ${opp} also passes, the game ends and is scored by area (Chinese rules, komi ${KOMI}).${now} Dead stones are not removed, so capture them first.`;
+};
 
 // All legal moves analyzed and ranked (best first).
 export function analyzeAll(board, me, opp, history, lastKey) {

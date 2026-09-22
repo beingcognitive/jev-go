@@ -80,14 +80,44 @@ export function status(c) {
   return { over: false, result: null, winner: null };
 }
 
-// Every `color` piece bearing on `square`: values cheapest first with the king (0) last, plus the cheapest
-// non-king attacker's type. One board scan per side.
+const fileOf = (sq) => sq.charCodeAt(0) - 97, rankOf = (sq) => Number(sq[1]) - 1;
+const sqAt = (f, r) => FILES[f] + (r + 1);
+// Is the `color` piece on `sq` absolutely pinned to its king, so that capturing on `target` would be illegal?
+// Geometric: the king, the piece and an enemy slider on one line with nothing between; a capture along that
+// same line stays legal. A king in check is left to the approximation (its captures are evasions anyway).
+function pinned(c, sq, color, target) {
+  const p = c.get(sq);
+  if (!p || p.type === "k") return false;
+  const king = c.findPiece({ type: "k", color })[0];
+  if (!king) return false;
+  const df = Math.sign(fileOf(sq) - fileOf(king)), dr = Math.sign(rankOf(sq) - rankOf(king));
+  const adf = Math.abs(fileOf(sq) - fileOf(king)), adr = Math.abs(rankOf(sq) - rankOf(king));
+  if (!(adf === 0 || adr === 0 || adf === adr)) return false;   // not on a line from the king
+  const diagonal = adf === adr;
+  // nothing between the king and the piece
+  for (let f = fileOf(king) + df, r = rankOf(king) + dr; f !== fileOf(sq) || r !== rankOf(sq); f += df, r += dr) if (c.get(sqAt(f, r))) return false;
+  // the first piece beyond it must be an enemy slider of the right kind
+  for (let f = fileOf(sq) + df, r = rankOf(sq) + dr; f >= 0 && f < 8 && r >= 0 && r < 8; f += df, r += dr) {
+    const q = c.get(sqAt(f, r));
+    if (!q) continue;
+    if (q.color === color) return false;
+    if (!(q.type === "q" || (diagonal ? q.type === "b" : q.type === "r"))) return false;
+    // pinned: a capture is still legal along the pin line (the target is on the king-piece line, beyond or before the piece)
+    const tf = fileOf(target) - fileOf(king), tr = rankOf(target) - rankOf(king);
+    const onLine = df === 0 ? tf === 0 && Math.sign(tr) === dr : dr === 0 ? tr === 0 && Math.sign(tf) === df : Math.abs(tf) === Math.abs(tr) && Math.sign(tf) === df && Math.sign(tr) === dr;
+    return !onLine;
+  }
+  return false;
+}
+// Every `color` piece bearing on `square` and free to take there (absolutely pinned pieces are left out unless
+// the capture runs along the pin): values cheapest first with the king (0) last, plus the cheapest non-king
+// attacker's type. One board scan per side.
 function bearing(c, square, color) {
   const values = [];
   let attacker = null, cheapest = null;
   for (const sq of c.attackers(square, color)) {
     const p = c.get(sq);
-    if (!p) continue;
+    if (!p || pinned(c, sq, color, square)) continue;
     values.push(VALUE[p.type]);
     if (p.type !== "k" && (cheapest === null || VALUE[p.type] < cheapest)) { cheapest = VALUE[p.type]; attacker = p.type; }
   }
@@ -97,7 +127,6 @@ function bearing(c, square, color) {
 // Material a `me` piece worth `val` on `square` is likely to lose: a static exchange over every attacker
 // and defender, cheapest piece first. A king may only take once nothing defends the square any more.
 // One recapture is not enough to call a piece safe: two attackers against one defender win it outright.
-// Pinned pieces are counted as if free to move (known approximation).
 // What the side to move wins by capturing a piece worth `target` with attackers `att` against defenders `def`
 // (both cheapest first, king = 0 last). The capturer may decline, so the result is never negative.
 function see(target, att, def) {
@@ -123,11 +152,11 @@ function worstHanging(c, me, skip) {
   }
   return { worst, what };
 }
-const HOME_RANK = { w: "1", b: "8" };
+const HOME = { w: { n: ["b1", "g1"], b: ["c1", "f1"] }, b: { n: ["b8", "g8"], b: ["c8", "f8"] } };
 const CENTER = new Set(["d4", "e4", "d5", "e5"]);
 
 // Annotate one legal move. `c` is mutated and restored. `deep` adds the scan for other pieces left
-// en prise (a full board scan, so analyzeAll only does it for the leading moves).
+// en prise (a full board scan; analyzeAll does it for every move).
 export function analyzeMove(c, m, deep = true) {
   const me = m.color;
   const captured = (m.captured ? VALUE[m.captured] : 0) + (m.promotion ? VALUE[m.promotion] - 1 : 0);
@@ -136,12 +165,17 @@ export function analyzeMove(c, m, deep = true) {
   const check = c.inCheck();
   const mate = c.isCheckmate();
   const stalemate = c.isStalemate();
-  const self = mate ? { risk: 0, attacker: null } : riskOn(c, m.to, moverVal, me);
+  let self = mate ? { risk: 0, attacker: null } : riskOn(c, m.to, moverVal, me);
+  if (!mate && m.flags.includes("b")) { // a double pawn push: an enemy pawn beside it may take en passant, on the skipped square
+    const f = fileOf(m.to), r = rankOf(m.to), opp = otherColor(me);
+    const beside = [f - 1, f + 1].filter((x) => x >= 0 && x < 8).some((x) => { const q = c.get(sqAt(x, r)); return q && q.type === "p" && q.color === opp; });
+    if (beside) { const ep = riskOn(c, sqAt(f, (rankOf(m.from) + r) / 2), VALUE.p, me); if (ep.risk > self.risk) self = { ...ep, ep: true }; }
+  }
   const other = !deep || mate || stalemate ? { worst: 0, what: null } : worstHanging(c, me, m.to);
   c.undo();
   const gain = captured - self.risk;
   const castles = m.flags.includes("k") ? "kingside" : m.flags.includes("q") ? "queenside" : null;
-  const develops = (m.piece === "n" || m.piece === "b") && m.from[1] === HOME_RANK[me];
+  const develops = (m.piece === "n" || m.piece === "b") && HOME[me][m.piece].includes(m.from);
   let score = gain - 0.9 * other.worst + (mate ? 1000 : 0) + (check ? 0.4 : 0) + (castles ? 0.8 : 0) + (develops ? 0.5 : 0) + (CENTER.has(m.to) ? 0.3 : 0);
   if (stalemate) score -= 50;
   if (m.piece === "k" && !castles) score -= 0.5;
@@ -153,7 +187,8 @@ export function analyzeMove(c, m, deep = true) {
   if (check && !mate) parts.push("gives check");
   if (self.risk > 0) {
     const mover = NAME[m.promotion || m.piece];
-    parts.push(!self.defended ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[self.attacker]}, undefended`
+    parts.push(self.ep ? `hangs the pawn (1): can be taken en passant${self.defended ? "" : ", undefended"}`
+      : !self.defended ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[self.attacker]}, undefended`
       : self.risk === moverVal ? `hangs the ${mover} (${self.risk}): attacked by a ${NAME[self.attacker]}, more attackers than defenders`
       : `${mover} can be taken by a ${NAME[self.attacker]} (loses ${self.risk})`);
   }
@@ -180,15 +215,13 @@ function addThreat(c, a) {
 }
 const C_other = (a) => (a.piece && a.from ? otherColor(a.color) : "b");
 
-// All legal moves annotated and ranked (best first). Threat annotations are computed for the top 16 only
-// (they cost a second board scan), then the ranking is refreshed. `c` is restored.
-export function analyzeAll(c, deepCount = 16) {
-  const moves = c.moves({ verbose: true });
-  let out = moves.map((m) => Object.assign(analyzeMove(c, m, false), { color: m.color, m }));
+// All legal moves annotated and ranked (best first). Every move pays for the en-prise scan, so the ranking
+// compares like with like: a move that skipped it would keep an unpenalised score and outrank the honest ones.
+// Threat annotations only raise a score, so they go to the leading moves afterwards. `c` is restored.
+export function analyzeAll(c, threatCount = 16) {
+  const out = c.moves({ verbose: true }).map((m) => Object.assign(analyzeMove(c, m, true), { color: m.color }));
   out.sort((a, b) => b.score - a.score);
-  // Second pass for the leading moves: what else they leave en prise, and what they threaten.
-  const lead = out.slice(0, deepCount).map((a) => addThreat(c, Object.assign(analyzeMove(c, a.m, true), { color: a.color })));
-  out = lead.concat(out.slice(deepCount).map(({ m, ...rest }) => rest));
+  for (const a of out.slice(0, threatCount)) addThreat(c, a);
   out.sort((a, b) => b.score - a.score);
   return out;
 }

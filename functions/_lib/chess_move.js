@@ -43,12 +43,27 @@ export function buildChessFullRequest(c, moves, me, analyses, mode) {
 }
 
 // player: code plays mate in one and single legal moves; otherwise Jev picks from the ranked pool.
-export function chessPlayerPlan(analyses, max = 12) {
+// The pool holds only moves that do not allow mate in one (chess.js marks a mating reply with # in its SAN, so
+// this is one move generation per candidate, not a search); up to `scan` moves are tried. When every one of
+// them allows mate, Jev still gets them, each saying so, and the note says so too.
+export function chessPlayerPlan(c, analyses, max = 12, scan = 24) {
   if (!analyses.length) return { forced: { move: null, source: "no-move", note: "no legal move" } };
   const mate = analyses.find((a) => a.mate);
   if (mate) return { forced: { move: mate.key, source: "forced-mate", note: null } };
   if (analyses.length === 1) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
-  return { pool: analyses.slice(0, max), all: analyses };
+  const safe = [], loses = [];
+  for (const a of analyses.slice(0, scan)) {
+    c.move(a.key);
+    const mating = c.moves().find((san) => san.endsWith("#"));
+    c.undo();
+    if (mating) { a.allowsMate = mating; a.score -= 100; a.desc += `; allows mate in one (${mating})`; loses.push(a); }
+    else if (safe.push(a) >= max) break;
+  }
+  const everyMoveLoses = !safe.length;
+  // Exactly one move stops the mate (and every other scanned move allows it): code plays it, like a forced block.
+  if (safe.length === 1 && loses.length && safe.length + loses.length === Math.min(scan, analyses.length))
+    return { forced: { move: safe[0].key, source: "only-move", note: `the only move that stops mate in one (${loses[0].allowsMate})` }, all: analyses };
+  return { pool: (everyMoveLoses ? loses : safe).slice(0, max), all: analyses, note: everyMoveLoses ? "every candidate allows mate in one" : null };
 }
 export function buildChessPlayerRequest(c, moves, me, plan) {
   const criteria = {};
@@ -126,7 +141,7 @@ export async function handleChessMove(body, env = {}) {
     const slim = (a, i) => ({ key: a.key, desc: a.desc, score: Math.round(a.score * 10) / 10, rank: i + 1, from: a.from, to: a.to });
     let info;
     if (mode === "player") {
-      const plan = chessPlayerPlan(analyses);
+      const plan = chessPlayerPlan(c, analyses);
       const base = { mode, truth: null, verdict: null, sanMap };
       if (plan.forced) {
         if (!plan.forced.move) throw new Error("no legal move");
@@ -139,7 +154,7 @@ export async function handleChessMove(body, env = {}) {
         const ok = best.choice !== null && legal.has(best.choice);
         const move = ok ? best.choice : plan.pool[0].key;
         info = {
-          ...base, move, source: ok ? "best" : "fallback", note: null, latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
+          ...base, move, source: ok ? "best" : "fallback", note: plan.note || null, latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
           answers: { best_move: pack(best) }, candidates: plan.pool.map(slim), heuristicRank: analyses.findIndex((a) => a.key === move) + 1, io: r.io,
         };
       }

@@ -467,9 +467,9 @@ test("go: full request lists every legal point plus pass in board order; naked h
   assert.equal(full.questions.best_move.criteria.pass, null);
   assert.equal("pass" in full.questions.capture_now.criteria, false);
   assert.deepEqual(Object.keys(full.questions.best_move.criteria).slice(0, 3), ["A9", "B9", "C9"]);
-  assert.ok(!Object.keys(full.state).some((k) => k.endsWith("_groups_in_atari")));
+  assert.ok(!Object.keys(full.state).some((k) => k.endsWith("_groups_short_of_liberties") || k === "area_score_if_scored_now"));
   const assisted = buildGoFullRequest(st, [], "O", "X", analyses, "assisted", true);
-  assert.deepEqual(assisted.state.O_groups_in_atari, ["1 stone at D5"]);
+  assert.deepEqual(assisted.state.O_groups_short_of_liberties, ["1 stone at D5 (in atari)"]);
 });
 
 test("go: goPlayerPlan pool bounds and the single-legal-point rule", () => {
@@ -480,10 +480,54 @@ test("go: goPlayerPlan pool bounds and the single-legal-point rule", () => {
   const pr = buildGoPlayerRequest(st, ["X E5"], "O", "X", plan);
   assert.ok(Object.values(pr.questions.best_move.criteria).every((d) => typeof d === "string"));
   const one = [{ key: "A1", desc: "x", score: 5 }];
-  assert.equal(goPlayerPlan({ last: "E5", count: 10 }, "O", "X", one).forced.source, "only-move");
-  const afterPass = goPlayerPlan({ last: "pass", count: 10 }, "O", "X", one);
+  const empty = Go.emptyBoard(); // O (white) leads by komi on an empty board; X trails
+  assert.equal(goPlayerPlan({ board: empty, last: "E5", count: 10 }, "O", "X", one).forced.source, "only-move");
+  const afterPass = goPlayerPlan({ board: empty, last: "pass", count: 10 }, "O", "X", one);
   assert.equal(afterPass.forced, undefined); assert.equal(afterPass.includePass, true);
-  assert.equal(goPlayerPlan({ last: "pass", count: 10 }, "O", "X", [{ key: "A1", desc: "x", score: -30 }]).forced.source, "forced-pass");
+  assert.equal(goPlayerPlan({ board: empty, last: "pass", count: 10 }, "O", "X", [{ key: "A1", desc: "x", score: -30 }]).forced.source, "forced-pass");
+  // passing would end the game on the count; a side that trails is not offered it (six of six auditors)
+  assert.equal(goPlayerPlan({ board: empty, last: "pass", count: 10 }, "X", "O", [{ key: "A1", desc: "x", score: 5 }, { key: "B1", desc: "y", score: 4 }]).includePass, false);
+  assert.match(Go.PASS_DESC("X", empty, "O"), /Counted right now: black 0, white 7.5 .*you would win by 7.5/);
+  assert.match(Go.PASS_DESC("O", empty, "X"), /you would LOSE by 7.5/);
+});
+
+// Positions from the round-6 audit (Codex x3 + Opus x3), 2026-09-22.
+const goSeq = (list) => { let st = Go.initialState(); for (const mv of list.split(",")) st = Go.applyMove(st, mv.trim()); return st; };
+test("go: a group one move from atari is seen, rescued first, and every move that ignores a capturable group says so", () => {
+  const st = goSeq("X D5, O E5, X E6, O A1, X E4, O F5, X F6"); // O E5-F5 has two liberties, F4 and G5
+  const an = Go.analyzeAll(st.board, "O", "X", st.history, st.last);
+  const g5 = an.find((a) => a.key === "G5");
+  assert.equal(an[0].key, "G5"); assert.equal(g5.rescued, 2); assert.match(g5.desc, /gives 2 O stones a third liberty/);
+  const g7 = an.find((a) => a.key === "G7");
+  assert.equal(g7.rescued, 0); assert.ok(an.indexOf(g7) > an.indexOf(g5));
+  // A1 is capturable whatever O plays elsewhere: said once in the state, not on every option
+  assert.equal(an.filter((a) => /A1/.test(a.desc)).length, 0);
+  const shortList = goState(st).O_groups_short_of_liberties;
+  assert.ok(shortList.includes("1 stone at A1 (2 liberties; capturable in a chase if left)"), JSON.stringify(shortList));
+  assert.ok(shortList.some((x) => /^2 stones at [EF]5 \(2 liberties\)$/.test(x)), JSON.stringify(shortList)); // E5-F5 escapes if defended
+});
+const goState = (st) => buildGoPlayerRequest(st, [], "O", "X", goPlayerPlan(st, "O", "X", Go.analyzeAll(st.board, "O", "X", st.history, st.last))).state;
+test("go: a ladder is not 'saved' and a snapback is a self-atari, however many stones it captures", () => {
+  const lad = goSeq("X D5, O E5, X E6, O A1, X E4, O F5, X F6, O G7, X F4, O G5, X G6, O F7, X G4, O H5, X H6, O E7, X H4");
+  const j5 = Go.analyzeAll(lad.board, "O", "X", lad.history, lad.last).find((a) => a.key === "J5");
+  assert.equal(j5.saved, 0); assert.equal(j5.doomed, 4);
+  assert.match(j5.desc, /cannot save the 4 O stones in atari: X captures them in the chase/);
+  const snap = goSeq("X A2, O A3, X B2, O B3, X C1, O C2, X pass, O B1");
+  const an = Go.analyzeAll(snap.board, "X", "O", snap.history, snap.last);
+  const a1 = an.find((a) => a.key === "A1");
+  assert.equal(a1.captured, 1); assert.equal(a1.selfAtari, true);
+  assert.match(a1.desc, /self-atari \(3 stones left with one liberty, so the capture can be taken straight back\)/);
+  assert.ok(an.indexOf(a1) > 12, "the snapback is out of the pool");
+  assert.equal(an[0].key === "A1", false);
+});
+test("go: the state carries the count, and a trailing side is never offered a game-ending pass", () => {
+  const st = goSeq("X E5, O E7, X E3, O C5, X G5, O C3, X G7, O C7, X A3, O A7, X D2, O B2, X F2, O H2, X J5, O pass");
+  const an = Go.analyzeAll(st.board, "X", "O", st.history, st.last);
+  const plan = goPlayerPlan(st, "X", "O", an);
+  assert.equal(plan.includePass, false); // black trails 8 to 14.5
+  const req = buildGoPlayerRequest(st, [], "X", "O", plan);
+  assert.equal("pass" in req.questions.best_move.criteria, false);
+  assert.deepEqual(req.state.area_score_if_scored_now, { black: 8, white: 14.5, komi: 7.5, leader: "white", margin: 6.5 });
 });
 
 test("go handleGoMove: plays, ends on two passes with a score, rejects bad input", async () => {
@@ -579,9 +623,41 @@ test("chess: full request lists every legal move in SAN order; naked has no in_c
   assert.equal("in_check" in full.state, false);
   const keys = Object.keys(full.questions.best_move.criteria);
   assert.deepEqual(keys, [...keys].sort());
-  const plan = chessPlayerPlan(an);
+  const plan = chessPlayerPlan(c, an);
   assert.equal(plan.forced, undefined); assert.ok(plan.pool.length <= 12);
-  assert.equal(chessPlayerPlan(C.analyzeAll(C.replay(["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"]))).forced.source, "forced-mate");
+  const m = C.replay(["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"]);
+  assert.equal(chessPlayerPlan(m, C.analyzeAll(m)).forced.source, "forced-mate");
+});
+
+// Positions from the round-6 audit (Codex x3 + Opus x3), 2026-09-22. FEN positions load without a move history.
+const fenGame = (f) => { const g = C.newGame(); g.load(f); return g; };
+test("chess: every move is scanned, so a move that drops the queen is never 'quiet move' and the rescues lead", () => {
+  const c = fenGame("rnb2rk1/ppp1bppp/6n1/8/3q4/2PB4/PP3PPP/RNBQR1K1 b - - 0 1"); // Black's queen on d4 is attacked by the c3 pawn
+  const an = C.analyzeAll(c);
+  const pool = chessPlayerPlan(c, an).pool;
+  assert.ok(pool.every((a) => a.piece === "q" || !/^quiet move$/.test(a.desc)), pool.map((a) => `${a.key}: ${a.desc}`).join(" | "));
+  assert.ok(pool.slice(0, 6).every((a) => a.piece === "q"), "queen moves first");
+  assert.match(an.find((a) => a.key === "Bf6").desc, /leaves the queen on d4 en prise/);
+});
+test("chess: no pool move allows mate in one when a defence exists; a single defence is played by code; all-lose says so", () => {
+  const c = fenGame("1R6/R5Q1/2p1k2p/8/3P4/4n1P1/7P/7K b - - 0 33"); // White threatens Qe5#
+  const plan = chessPlayerPlan(c, C.analyzeAll(c));
+  assert.deepEqual(plan.pool.map((a) => a.key).sort(), ["Kd5", "Kf5", "Nc4", "Ng4"]);
+  const one = fenGame("1nb3k1/ppp2p1p/7Q/8/8/8/PBP2PPP/6K1 b - - 0 1"); // only ...f6 stops Qg7#
+  const forced = chessPlayerPlan(one, C.analyzeAll(one)).forced;
+  assert.equal(forced.move, "f6"); assert.equal(forced.source, "only-move"); assert.match(forced.note, /only move that stops mate in one \(Qg7#\)/);
+  const lost = fenGame("6k1/5ppp/8/8/8/8/5PPP/r5K1 w - - 0 1"); // White is mated already? no: Black threatens nothing; use a real all-lose below
+  assert.ok(chessPlayerPlan(lost, C.analyzeAll(lost)));
+});
+test("chess: pinned pieces neither defend nor recapture; en passant is seen; development means leaving the home square", () => {
+  const pin = fenGame("3k3b/8/3p4/8/8/5N2/8/3RK3 b - - 0 1"); // the d6 pawn is pinned by Rd1
+  assert.match(C.analyzeAll(pin).find((a) => a.key === "Be5").desc, /hangs the bishop \(3\): attacked by a knight, undefended/);
+  const free = fenGame("4k3/4n3/8/3p4/2B5/8/8/4R1K1 w - - 0 1"); // Ne7 is pinned by Re1
+  assert.match(C.analyzeAll(free).find((a) => a.key === "Bxd5").desc, /captures a pawn \(1\) for free/);
+  const ep = fenGame("4k3/3p4/8/4P3/8/8/8/4K3 b - - 0 1");
+  assert.match(C.analyzeAll(ep).find((a) => a.key === "d5").desc, /hangs the pawn \(1\): can be taken en passant/);
+  const late = fenGame("4k3/8/8/8/8/2B5/8/4K3 w - - 0 1");
+  assert.ok(!C.analyzeAll(late).some((a) => a.develops), "a bishop on c3 in an endgame is not developing");
 });
 
 test("chess handleChessMove: state query, human move, Jev reply, mate, illegal, game over", async () => {

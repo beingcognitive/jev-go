@@ -12,13 +12,17 @@ const RULES =
   `Go on a 9x9 board. X is black and moves first, O is white. Coordinates are column letter A-J (there is no I) ` +
   `then row number 1-9. Area scoring with komi ${Go.KOMI} for O. Positional superko. Two consecutive passes end the game.`;
 
-function groupsInAtari(board, color) {
+// Groups with one or two liberties: in atari, or one move from it.
+function groupsShort(board, color) {
   const out = [], seen = new Set();
   for (let r = 0; r < Go.SIZE; r++) for (let c = 0; c < Go.SIZE; c++) {
     if (board[r][c] !== color || seen.has(r * Go.SIZE + c)) continue;
     const g = Go.group(board, r, c);
     for (const [a, b] of g.stones) seen.add(a * Go.SIZE + b);
-    if (g.liberties.size === 1) out.push(`${g.stones.length} stone${g.stones.length > 1 ? "s" : ""} at ${Go.key(...g.stones[0])}`);
+    const n = g.liberties.size;
+    if (n > 2) continue;
+    const caught = n === 2 && Go.chase(board, g.stones[0][0], g.stones[0][1], color, Go.other(color)) === "captured";
+    out.push(`${g.stones.length} stone${g.stones.length > 1 ? "s" : ""} at ${Go.key(...g.stones[0])} (${n === 1 ? "in atari" : caught ? "2 liberties; capturable in a chase if left" : "2 liberties"})`);
   }
   return out;
 }
@@ -31,9 +35,11 @@ function baseState(st, moves, me, opp, hints = true) {
     recent_moves: moves.slice(-10),
   };
   if (hints) {
-    const mine = groupsInAtari(st.board, me), theirs = groupsInAtari(st.board, opp);
-    if (mine.length) s[`${me}_groups_in_atari`] = mine;
-    if (theirs.length) s[`${opp}_groups_in_atari`] = theirs;
+    const sc = Go.score(st.board);
+    s.area_score_if_scored_now = { black: sc.black, white: sc.white, komi: Go.KOMI, leader: sc.winner === "X" ? "black" : "white", margin: sc.margin };
+    const mine = groupsShort(st.board, me), theirs = groupsShort(st.board, opp);
+    if (mine.length) s[`${me}_groups_short_of_liberties`] = mine;
+    if (theirs.length) s[`${opp}_groups_short_of_liberties`] = theirs;
   }
   return s;
 }
@@ -49,7 +55,7 @@ const byPosition = (analyses) => [...analyses].sort((a, b) => a.r - b.r || a.c -
 export function buildGoFullRequest(st, moves, me, opp, analyses, mode) {
   const points = {};
   for (const a of byPosition(analyses)) points[a.key] = mode === "assisted" ? a.desc : null;
-  const criteria = { ...points, pass: mode === "assisted" ? Go.PASS_DESC(opp) : null };
+  const criteria = { ...points, pass: mode === "assisted" ? Go.PASS_DESC(opp, st.board, me) : null };
   const questions = {
     capture_now: {
       type: "choice",
@@ -68,12 +74,14 @@ export function buildGoFullRequest(st, moves, me, opp, analyses, mode) {
   return { state: baseState(st, moves, me, opp, mode !== "naked"), questions, legal: new Set(Object.keys(criteria)) };
 }
 
-// player: code filters and ranks; Jev picks from the pool. Pass is offered when the opponent just passed,
-// when nothing scores, or near the move cap. A single legal point is played without a call only when pass is not on offer.
+// player: code filters and ranks; Jev picks from the pool. Pass can end the game on the count as it stands, so it
+// is offered only when that count is a win: after the opponent's pass or when nothing scores; near the move cap
+// regardless. A single legal point is played without a call only when pass is not on offer.
 export function goPlayerPlan(st, me, opp, analyses, max = 12) {
   if (!analyses.length) return { forced: { move: "pass", source: "forced-pass", note: "no legal move" } };
   const pool = analyses.slice(0, max);
-  const includePass = st.last === "pass" || pool[0].score <= 1 || st.count >= Go.MAX_MOVES - 10;
+  const winning = Go.score(st.board).winner === me;
+  const includePass = (winning && (st.last === "pass" || pool[0].score <= 1)) || st.count >= Go.MAX_MOVES - 10;
   if (analyses.length === 1 && !includePass) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
   if (analyses.length === 1 && analyses[0].score <= 0) return { forced: { move: "pass", source: "forced-pass", note: "only legal move is worse than passing" } };
   return { pool, includePass, all: analyses };
@@ -81,7 +89,7 @@ export function goPlayerPlan(st, me, opp, analyses, max = 12) {
 export function buildGoPlayerRequest(st, moves, me, opp, plan) {
   const criteria = {};
   for (const a of plan.pool) criteria[a.key] = a.desc;
-  if (plan.includePass) criteria.pass = Go.PASS_DESC(opp);
+  if (plan.includePass) criteria.pass = Go.PASS_DESC(opp, st.board, me);
   const questions = {
     best_move: {
       type: "choice",
@@ -151,7 +159,7 @@ export async function handleGoMove(body, env = {}) {
         const ok = best.choice !== null && legal.has(best.choice);
         const move = ok ? best.choice : plan.pool[0].key;
         const candidates = plan.pool.map(slim);
-        if (plan.includePass) candidates.push({ key: "pass", desc: Go.PASS_DESC(opp), score: 0, rank: null });
+        if (plan.includePass) candidates.push({ key: "pass", desc: Go.PASS_DESC(opp, st.board, me), score: 0, rank: null });
         info = {
           ...base, move, source: ok ? "best" : "fallback", note: plan.includePass ? "pass offered" : null,
           latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
