@@ -53,10 +53,13 @@ a{color:var(--felt)}
 .who img{width:28px;height:28px;border-radius:50%}
 @media (max-width:400px){.top{flex-wrap:wrap;row-gap:8px}.top .seg{order:3;flex:1 0 100%;justify-content:center}} /* below 400px one row cannot hold the menu, three games and Google's button: the pill takes its own row */
 
-/* ----- one column up to 1099px, two from 1100px; the play track is pinned to the board's width ----- */
+/* ----- one column up to 1099px; from 1100px a live game stays one centred column (main.solo) and a replay uses two; the play track is pinned to the board's width ----- */
 main{max-width:720px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
 .top{max-width:720px}
-@media (min-width:1100px){main,.top{max-width:1120px}main{grid-template-columns:min-content minmax(0,1fr);gap:36px}main.solo{grid-template-columns:min-content;justify-content:center}} /* solo: the scoresheet is empty before Jev's first move, so the board is centred */
+@media (min-width:1100px){main,.top{max-width:1120px}main{grid-template-columns:min-content minmax(0,1fr);gap:36px}
+  main.solo{grid-template-columns:min-content;justify-content:center} /* live play: one centred column for the whole game; the board never moves and the panels stack under it */
+} /* two columns only for a replay, where the scoresheet is the point */
+main.solo .more{contain:inline-size} /* the panels never widen the board's track */
 .play,.more{min-width:0}
 h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"opsz" 72;letter-spacing:-.01em;margin:0 0 4px}
 .sub{color:var(--ink-2);font-size:15px;max-width:60ch;margin:0 0 12px}
@@ -825,7 +828,8 @@ function render(light){
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-pressed",b.dataset.v===gameSel); } // picking a game during a replay leaves it
   renderJevCard(pickP);
   const bare=!S.turns.length&&S.status!=="replay"; // before Jev's first move only the board speaks
-  $("strip").hidden=bare; document.querySelector(".more").hidden=bare; document.querySelector("main").classList.toggle("solo",bare);
+  $("strip").hidden=bare; document.querySelector(".more").hidden=bare;
+  document.querySelector("main").classList.toggle("solo",S.status!=="replay"); // a live game keeps the board centred; a replay opens the second column
 
   const t=S.last;
   if(t){

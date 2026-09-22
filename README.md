@@ -78,9 +78,10 @@ screens, and they fade when you start yours.
 Before Jev's first move the board stands alone. From the first call on, under the board: the status
 line, Pass or Place when needed, the result card at game end (with Play again, Share and the replay
 link), a one-line card saying what Jev played, how sure it was and why, and **every call to Jev**,
-newest first, the newest open, with the exact request and the raw response and copy buttons. Beside
-the board on wide screens, below it on a phone: Jev's full candidate list with its reasons, and the
-per-move table (who decided, heuristic rank, confidence, latency, tokens).
+newest first, the newest open, with the exact request and the raw response and copy buttons. Then Jev's
+full candidate list with its reasons, and the per-move table (who decided, heuristic rank, confidence,
+latency, tokens). The board stays centred in one column for the whole game; only a replay opens a second
+column and puts those two panels beside the board.
 
 The top bar holds the menu (new game, Jev opens, your games, hall of fame, about), the game switcher,
 this game's numbers in the centre on wide screens, and sign-in. A replay (`?replay=<id>`) plays
