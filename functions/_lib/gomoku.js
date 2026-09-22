@@ -410,25 +410,6 @@ export function vcf(board, me, opp, depth, myPts) {
   const mine = empties(board, myPts).map((q) => ({ q, cls: quickClass(board, q, me) })).filter((x) => FORCING.has(x.cls));
   if (mine.some((x) => x.cls === "five")) return true;
   if (depth <= 0) return false;
-  // Our stone q is a four; opp blocks at b. Returns true when the line wins from there.
-  const after = (q, b, pts) => {
-    if (isWinAt(board, b.r, b.c)) return false;
-    const counter = fivesThrough(board, b.r, b.c, opp);
-    if (counter.length >= 2) return false;
-    if (!counter.length) return vcf(board, me, opp, depth - 1, pts);
-    // opp's block is a four: we must block it, and only a blocking four keeps the initiative
-    const c = counter[0];
-    board[c.r][c.c] = me;
-    try {
-      if (isWinAt(board, c.r, c.c)) return true;
-      const bl = fivesThrough(board, c.r, c.c, me);
-      if (bl.length >= 2) return true;
-      if (!bl.length) return false;
-      const d = bl[0];
-      board[d.r][d.c] = opp;
-      try { return after(c, d, union(pts, linePoints(board, c.r, c.c))); } finally { board[d.r][d.c] = "."; }
-    } finally { board[c.r][c.c] = "."; }
-  };
   for (const { q } of mine) {
     board[q.r][q.c] = me;
     try {
@@ -437,12 +418,32 @@ export function vcf(board, me, opp, depth, myPts) {
       if (!bl.length) continue;
       const b = bl[0];
       board[b.r][b.c] = opp;
-      try { if (after(q, b, union(myPts, linePoints(board, q.r, q.c)))) return true; } finally { board[b.r][b.c] = "."; }
+      try { if (afterBlock(board, me, opp, depth, b, union(myPts, linePoints(board, q.r, q.c)))) return true; } finally { board[b.r][b.c] = "."; }
     } finally { board[q.r][q.c] = "."; }
   }
   return false;
 }
-// A forcing move that wins by force: five, open four, or a four whose block leaves us a VCF.
+// Our four has just been blocked at b (opp's stone is on the board). True when the line still wins: the block did not
+// win, and either it made no counter-four (our next voluntary four continues the VCF at depth - 1) or it did and our
+// forced block is itself a four, in which case the exchange repeats without consuming depth.
+function afterBlock(board, me, opp, depth, b, pts) {
+  if (isWinAt(board, b.r, b.c)) return false;
+  const counter = fivesThrough(board, b.r, b.c, opp);
+  if (counter.length >= 2) return false;
+  if (!counter.length) return vcf(board, me, opp, depth - 1, pts);
+  const c = counter[0];
+  board[c.r][c.c] = me;
+  try {
+    if (isWinAt(board, c.r, c.c)) return true;
+    const bl = fivesThrough(board, c.r, c.c, me);
+    if (bl.length >= 2) return true;
+    if (!bl.length) return false;
+    const d = bl[0];
+    board[d.r][d.c] = opp;
+    try { return afterBlock(board, me, opp, depth, d, union(pts, linePoints(board, c.r, c.c))); } finally { board[d.r][d.c] = "."; }
+  } finally { board[c.r][c.c] = "."; }
+}
+// A forcing move that wins by force: five, open four, or a four whose block leaves us a VCF (three more fours deep).
 function winsByForce(board, p, me, opp, myPts) {
   board[p.r][p.c] = me;
   try {
@@ -452,26 +453,7 @@ function winsByForce(board, p, me, opp, myPts) {
     if (!bl.length) return false;
     const b = bl[0];
     board[b.r][b.c] = opp;
-    try {
-      if (isWinAt(board, b.r, b.c)) return false;
-      const pts = union(myPts, linePoints(board, p.r, p.c));
-      const counter = fivesThrough(board, b.r, b.c, opp);
-      if (!counter.length) return vcf(board, me, opp, 3, pts);
-      if (counter.length >= 2) return false;
-      // the block counters with a four: our forced block must itself be a four for the chain to continue
-      const c = counter[0];
-      board[c.r][c.c] = me;
-      try {
-        if (isWinAt(board, c.r, c.c)) return true;
-        const bl2 = fivesThrough(board, c.r, c.c, me);
-        if (bl2.length >= 2) return true;
-        if (!bl2.length) return false;
-        const d = bl2[0];
-        board[d.r][d.c] = opp;
-        try { return !isWinAt(board, d.r, d.c) && !fivesThrough(board, d.r, d.c, opp).length && vcf(board, me, opp, 3, union(pts, linePoints(board, c.r, c.c))); }
-        finally { board[d.r][d.c] = "."; }
-      } finally { board[c.r][c.c] = "."; }
-    } finally { board[b.r][b.c] = "."; }
+    try { return afterBlock(board, me, opp, 4, b, union(myPts, linePoints(board, p.r, p.c))); } finally { board[b.r][b.c] = "."; }
   } finally { board[p.r][p.c] = "."; }
 }
 

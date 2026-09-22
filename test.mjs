@@ -191,6 +191,10 @@ test("gomoku: a win by continuous fours through the opponent's counter-four is p
   const g7 = c.all.find((x) => x.key === "G7");
   assert.equal(g7.wins, true, g7.desc);
   assert.ok(playerPlan(b, "X", "O").pool.some((x) => x.key === "G7"));
+  // a second counter-four exchange on the way (third Codex round): X G7, O E9, X F9, O F7, X B7, O B11, X F11, O F12, X D11
+  const b3 = stones("E11 G11 F10 F8 F6 H6 I5 B8 B9 B10 A1 O1", "G9 H9 I9 G4 J4 J3 L3 B6 C7 D7 E7 B12");
+  const g7b = G.candidates(b3, "X", "O").all.find((x) => x.key === "G7");
+  assert.equal(g7b.wins, true, g7b.desc);
   // the six-slot cap counts open threes only, so a sixth open three is still tried
   const b2 = stones("M9 F7 H7 C6 H6 I6 K6 D4", "J9 K7 E6 L6 C5 D5 C4 D3");
   const g6 = G.candidates(b2, "X", "O").all.find((x) => x.key === "G6");
