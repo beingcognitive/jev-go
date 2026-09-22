@@ -32,12 +32,12 @@ code without a call (a five, an open four, a forced block, mate in one) and are 
 - **Gomoku 15×15**: code sees fives, open/closed/split fours, open threes and forks, and runs a bounded
   forcing search for every candidate: does the opponent win by force after it, through an unstoppable
   threat at once, a four or an open three that no reply holds, or the block of our own four? Moves that
-  lose by force are dropped, a four is kept only when the position after its forced block still holds,
-  and when every move loses code plays the longest defence itself (the block of the biggest threat) and
-  says so. Code plays forced wins and blocks, and hands Jev about twelve holding candidates, each
+  lose are dropped, a four is kept only when the position after its forced block still holds, and when no
+  checked move holds code plays the longest defence itself (the block of the biggest threat) and says so. Code plays forced wins and blocks, and hands Jev about twelve holding candidates, each
   annotated with what it creates and which opponent shape it blocks, plus a threat summary in the state.
-  The search is a bound, not a proof: it tries the six strongest opponent threats per move under a fixed
-  evaluation budget (about five to nine milliseconds on a laptop), and says when the budget cut it short.
+  The search is a bound, not a proof: it tries every opponent four and the six strongest open threes per
+  move under a fixed evaluation budget (about five to twelve milliseconds on a laptop). When the budget runs
+  out first, Jev gets the moves checked so far, blocks first, and the decision's note says so.
 - **Go 9×9**: captures, suicide, **positional superko**, area scoring (Chinese rules, komi 7.5),
   two-pass game end. For every legal point code computes what the move captures, saves, threatens
   (atari), connects, whether it is self-atari or fills an own eye, the line and the liberties left;
@@ -59,7 +59,7 @@ whether Jev's judgment agrees with, beats, or ignores the one-ply evaluation.
 
 The practice opponent (no key) picks from the same pool with a simple line-length heuristic and a little
 randomness, and it is already hard to beat: in Player mode most of the playing strength is the harness,
-which only ever offers holding moves. Jev's share is the difference between the code's first choice and
+which offers only moves the search could not refute, and says so when the budget stopped it from checking. Jev's share is the difference between the code's first choice and
 Jev's pick, which the page reports as the heuristic rank. To measure Jev alone, use the API-only modes
 below.
 

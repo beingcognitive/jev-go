@@ -390,24 +390,45 @@ export function dangerOf(board, p, me, opp, depth = 1, oppPts = nearPoints(board
     return null;
   } finally { board[p.r][p.c] = "."; }
 }
-// `me` to move: is there a move that does not lose by force? Tried: a VCF of ours, then the opponent's four points, its
-// six strongest open threes (by class, then key) and our fours. A bound, not a proof: a defence elsewhere on the line is not tried.
+// `me` to move: is there a move that does not lose by force? Tried: the opponent's four points, its six strongest open
+// threes (by class, then key) and our fours. A bound, not a proof: a defence elsewhere on the line is not tried.
+// (No VCF check here: the caller has already run one on this very position through winsByForce.)
 function anyHold(board, me, opp, depth, oppPts, myPts) {
   const oppT = empties(board, oppPts).map((t) => ({ t, cls: classAt(board, t, opp) })).filter((x) => THREAT.has(x.cls));
   if (!oppT.length) return true;
-  if (!oppT.some((x) => x.cls === "five") && vcf(board, me, opp, 2, myPts)) return true;
   oppT.sort((x, y) => VALUE[y.cls] - VALUE[x.cls] || (x.t.key < y.t.key ? -1 : 1));
   const myF = empties(board, myPts).filter((q) => FORCING.has(quickClass(board, q, me)));
-  const tries = oppT.filter((x, i) => FORCING.has(x.cls) || i < 6).map((x) => x.t);
+  let n = 0;
+  const tries = oppT.filter((x) => FORCING.has(x.cls) || n++ < 6).map((x) => x.t);
   return union(tries, myF).some((q) => dangerOf(board, q, me, opp, depth, oppPts, myPts) === null);
 }
 // Victory by continuous fours: `me` to move wins by playing only fours (each answered by its single block) up to
-// `depth` of them. A block that wins or makes a counter-four ends the line as unresolved, which counts as no.
-// The caller guarantees `opp` has no five point. `myPts` ⊇ our four points, grown by the lines through each stone.
+// `depth` of them. When the block counters with a four of its own we must block it, and the chain goes on only if
+// that block is itself a four; anything unresolved counts as no. The caller guarantees `opp` has no five point.
+// `myPts` ⊇ our four points, grown by the lines through each stone.
 export function vcf(board, me, opp, depth, myPts) {
   const mine = empties(board, myPts).map((q) => ({ q, cls: quickClass(board, q, me) })).filter((x) => FORCING.has(x.cls));
   if (mine.some((x) => x.cls === "five")) return true;
   if (depth <= 0) return false;
+  // Our stone q is a four; opp blocks at b. Returns true when the line wins from there.
+  const after = (q, b, pts) => {
+    if (isWinAt(board, b.r, b.c)) return false;
+    const counter = fivesThrough(board, b.r, b.c, opp);
+    if (counter.length >= 2) return false;
+    if (!counter.length) return vcf(board, me, opp, depth - 1, pts);
+    // opp's block is a four: we must block it, and only a blocking four keeps the initiative
+    const c = counter[0];
+    board[c.r][c.c] = me;
+    try {
+      if (isWinAt(board, c.r, c.c)) return true;
+      const bl = fivesThrough(board, c.r, c.c, me);
+      if (bl.length >= 2) return true;
+      if (!bl.length) return false;
+      const d = bl[0];
+      board[d.r][d.c] = opp;
+      try { return after(c, d, union(pts, linePoints(board, c.r, c.c))); } finally { board[d.r][d.c] = "."; }
+    } finally { board[c.r][c.c] = "."; }
+  };
   for (const { q } of mine) {
     board[q.r][q.c] = me;
     try {
@@ -416,10 +437,7 @@ export function vcf(board, me, opp, depth, myPts) {
       if (!bl.length) continue;
       const b = bl[0];
       board[b.r][b.c] = opp;
-      try {
-        if (isWinAt(board, b.r, b.c) || fivesThrough(board, b.r, b.c, opp).length) continue;
-        if (vcf(board, me, opp, depth - 1, union(myPts, linePoints(board, q.r, q.c)))) return true;
-      } finally { board[b.r][b.c] = "."; }
+      try { if (after(q, b, union(myPts, linePoints(board, q.r, q.c)))) return true; } finally { board[b.r][b.c] = "."; }
     } finally { board[q.r][q.c] = "."; }
   }
   return false;
@@ -434,8 +452,26 @@ function winsByForce(board, p, me, opp, myPts) {
     if (!bl.length) return false;
     const b = bl[0];
     board[b.r][b.c] = opp;
-    try { return !isWinAt(board, b.r, b.c) && !fivesThrough(board, b.r, b.c, opp).length && vcf(board, me, opp, 3, union(myPts, linePoints(board, p.r, p.c))); }
-    finally { board[b.r][b.c] = "."; }
+    try {
+      if (isWinAt(board, b.r, b.c)) return false;
+      const pts = union(myPts, linePoints(board, p.r, p.c));
+      const counter = fivesThrough(board, b.r, b.c, opp);
+      if (!counter.length) return vcf(board, me, opp, 3, pts);
+      if (counter.length >= 2) return false;
+      // the block counters with a four: our forced block must itself be a four for the chain to continue
+      const c = counter[0];
+      board[c.r][c.c] = me;
+      try {
+        if (isWinAt(board, c.r, c.c)) return true;
+        const bl2 = fivesThrough(board, c.r, c.c, me);
+        if (bl2.length >= 2) return true;
+        if (!bl2.length) return false;
+        const d = bl2[0];
+        board[d.r][d.c] = opp;
+        try { return !isWinAt(board, d.r, d.c) && !fivesThrough(board, d.r, d.c, opp).length && vcf(board, me, opp, 3, union(pts, linePoints(board, c.r, c.c))); }
+        finally { board[d.r][d.c] = "."; }
+      } finally { board[c.r][c.c] = "."; }
+    } finally { board[b.r][b.c] = "."; }
   } finally { board[p.r][p.c] = "."; }
 }
 
@@ -461,7 +497,12 @@ export function describeCandidate(cand, me, opp) {
   if (VALUE[cand.opp.cls] >= VALUE.three)
     parts.push(`blocks ${opp}'s ${BLOCKS[cand.opp.cls]}${dirNames(cand.opp, contributing(cand.opp.cls))}: ${opp} would make ${LABEL[cand.opp.cls]} here`);
   if (!parts.length) parts.push(cand.adj ? `quiet move next to ${cand.adjMe} ${me} and ${cand.adjOpp} ${opp} stones` : "quiet move away from the stones");
-  if (cand.danger) parts.push(cand.danger.cls === "block" ? `loses by force after ${opp} blocks at ${cand.danger.by}` : `loses by force: ${opp} answers at ${cand.danger.by} (${LABEL[cand.danger.cls]})`);
+  if (cand.danger) {
+    const d = cand.danger;
+    if (d.cls === "block") parts.push(`no holding move found after ${opp} blocks at ${d.by}`);
+    else if (d.cls === "five" || d.cls === "open_four") parts.push(`loses by force: ${opp} answers at ${d.by} (${LABEL[d.cls]})`);
+    else parts.push(`no answer found to ${opp} ${d.by} (${LABEL[d.cls]})`);
+  }
   return parts.join("; ");
 }
 

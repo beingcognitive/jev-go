@@ -97,18 +97,18 @@ test("gomoku: a lost position is played out by code with the block of the bigges
     const plan = playerPlan(pos, "O", "X");
     assert.equal(plan.forced?.source, "longest-defence", JSON.stringify(plan.forced || plan.pool?.map((c) => c.key)));
     assert.ok(["G6", "K10"].includes(plan.forced.move), plan.forced.move);
-    assert.match(plan.forced.note, /every move loses by force; .*blocks X's open three \(anti-diagonal\).*X answers at K8 \(a four plus an open three\)/);
+    assert.match(plan.forced.note, /no checked move holds; .*blocks X's open three \(anti-diagonal\).*no answer found to X K8 \(a four plus an open three\)/);
     const e10 = plan.cands.all.find((c) => c.key === "E10");
     if (!e10) continue; // already played in the final position
     assert.equal(e10.checked, true); assert.deepEqual(e10.danger, { by: "D10", cls: "block" });
-    assert.match(e10.desc, /loses by force after X blocks at D10/);
+    assert.match(e10.desc, /no holding move found after X blocks at D10/);
   }
 });
 test("gomoku: the move before was already lost: I9 blocks the open three but X's J9 then wins, and a four does not escape", () => {
   const plan = playerPlan(lostPos("D11", "C12", "E10", "D10", "J9", "I9"), "O", "X");
   assert.equal(plan.forced?.source, "longest-defence");
   assert.equal(plan.forced.move, "I9");
-  assert.match(plan.forced.note, /X answers at J9 \(an open three\)/);
+  assert.match(plan.forced.note, /no answer found to X J9 \(an open three\)/);
   assert.deepEqual(plan.cands.all.find((c) => c.key === "E10").danger, { by: "D10", cls: "block" });
 });
 test("gomoku: the danger search stays within the CPU budget and says when it did not finish", () => {
@@ -177,8 +177,30 @@ test("gomoku: allowing a double open three is a loss (Codex auditor position) an
   assert.ok(!plan.pool.some((x) => x.key === "G7"));
   const fork = stones("L8 D3 E4", "I8 J8 K8 H9 H10"); // O H8 is a four plus an open three; O G8 a plain four
   const { state } = buildPlayerRequest(fork, [], "X", "O", playerPlan(fork, "X", "O"));
-  assert.deepEqual(state.threats.O_wins_outright_at, ["H8"]);
+  assert.deepEqual(state.threats.O_can_make_four_plus_three_or_double_four_at, ["H8"]);
   assert.ok(state.threats.O_can_make_four_at.includes("G8") && !state.threats.O_can_make_four_at.includes("H8"));
+  const twos = stones("L8 D3 E4 A1", "G8 H8 J9 J10"); // O J8 makes two open threes at once
+  const req = buildPlayerRequest(twos, [], "X", "O", playerPlan(twos, "X", "O"));
+  assert.ok(req.state.threats.O_can_make_two_open_threes_at.includes("J8"), JSON.stringify(req.state.threats));
+  assert.ok(!(req.state.threats.O_can_make_open_three_at || []).includes("J8"));
+});
+test("gomoku: a win by continuous fours through the opponent's counter-four is proven (second Codex round)", () => {
+  // X G7, O E9, X F9 (blocks and makes a four), O F7, X F11, O F12, X D11: then X has two five points (C11, H11)
+  const b = stones("E11 G11 F10 F8 F6 H6 I5", "G9 H9 I9 G4 J4 J3 L3");
+  const c = G.candidates(b, "X", "O");
+  const g7 = c.all.find((x) => x.key === "G7");
+  assert.equal(g7.wins, true, g7.desc);
+  assert.ok(playerPlan(b, "X", "O").pool.some((x) => x.key === "G7"));
+  // the six-slot cap counts open threes only, so a sixth open three is still tried
+  const b2 = stones("M9 F7 H7 C6 H6 I6 K6 D4", "J9 K7 E6 L6 C5 D5 C4 D3");
+  const g6 = G.candidates(b2, "X", "O").all.find((x) => x.key === "G6");
+  assert.equal(g6.danger, null, g6.desc);
+});
+test("gomoku: the decision note says when the budget cut the search and when every checked move loses", async () => {
+  const pos = lostPos("D11", "C12", "E10", "D10", "J9", "I9");
+  const plan = playerPlan(pos, "O", "X", 12, 2500);
+  assert.equal(plan.allLose, true);
+  assert.equal(plan.cands.exhausted, false);
 });
 
 test("gomoku: an opponent four-plus-three is not a loss when our forced block counters (Opus fix-the-fix position)", () => {
@@ -198,8 +220,13 @@ test("gomoku: when the budget cuts the search before a holding move is found, Je
   assert.equal(plan.cands.exhausted, false);
   assert.ok(plan.cands.all.filter((c) => c.checked).length >= 1);
   assert.equal(plan.oppThreatens, true);
-  assert.ok(plan.pool.length >= 1 && plan.pool.every((c) => c.checked && /loses by force/.test(c.desc)), plan.pool.map((c) => c.desc).join(" | "));
+  assert.ok(plan.pool.length >= 1 && plan.pool.every((c) => c.checked && /no answer found|no holding move|loses by force/.test(c.desc)), plan.pool.map((c) => c.desc).join(" | "));
   assert.equal(plan.pool[0].key, "I9"); // the block of the biggest threat first
+  const none = playerPlan(pos, "O", "X", 12, 100); // too small to check even one candidate: the raw ranking, honestly flagged
+  assert.equal(none.forced, undefined);
+  assert.equal(none.cands.all.filter((c) => c.checked).length, 0);
+  assert.equal(none.oppThreatens, false);
+  assert.equal(none.pool.length, 12);
 });
 
 test("gomoku: a counter-four that holds keeps the move in the pool; a four that only delays does not", () => {

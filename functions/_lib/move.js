@@ -50,10 +50,11 @@ function threatSummary(cands, me, opp) {
   const pick = (side, classes) => cands.all.filter((c) => classes.includes(c[side].cls)).map((c) => c.key).slice(0, 6);
   const s = {};
   const add = (k, v) => { if (v.length) s[k] = v; };
-  // Forks that win outright get their own line: a four-plus-three is not "a four", and two open threes are not "an open three".
+  // Forks get their own line: a four-plus-three is not "a four", and two open threes are not "an open three".
+  // These name shapes, not outcomes: whether a fork wins is what the candidate search decides.
+  add(`${opp}_can_make_open_four_at`, pick("opp", ["open_four"])); // ours never reaches here: playerPlan plays an open four itself
   for (const [side, who] of [["opp", opp], ["me", me]]) {
-    add(`${who}_can_make_open_four_at`, pick(side, ["open_four"]));
-    add(`${who}_wins_outright_at`, pick(side, ["four_three", "double_four"]));
+    add(`${who}_can_make_four_plus_three_or_double_four_at`, pick(side, ["four_three", "double_four"]));
     add(`${who}_can_make_four_at`, pick(side, ["four"]));
     add(`${who}_can_make_two_open_threes_at`, pick(side, ["double_three"]));
     add(`${who}_can_make_open_three_at`, pick(side, ["open_three"]));
@@ -62,7 +63,7 @@ function threatSummary(cands, me, opp) {
 }
 
 // player: code decides forced tactics; otherwise a ranked candidate pool for Jev.
-// Candidates that lose by force are dropped; when every checked move loses, code plays the longest defence.
+// Candidates the search refutes are dropped; when no checked move holds, code plays the longest defence.
 export function playerPlan(board, me, opp, max = 12, budget = undefined) {
   const winPts = G.fivePointsFor(board, me);
   if (winPts.length) return { forced: { move: winPts[0], source: "forced-win", note: null } };
@@ -75,11 +76,20 @@ export function playerPlan(board, me, opp, max = 12, budget = undefined) {
   const checked = cands.all.filter((c) => c.checked);
   const safe = checked.filter((c) => !c.danger);
   if (safe.length) return { pool: safe.slice(0, max), cands, oppThreatens: safe.length < checked.length };
-  // Every checked move loses by force: blocks of the biggest threat first, to make the opponent prove the win.
+  // No checked move holds (the search is a bound, not a proof): blocks of the biggest threat first, to make the
+  // opponent prove the win. With the ranking searched to its cap, code plays that block; otherwise Jev picks among them.
   const blocks = [...checked].sort((x, y) => G.VALUE[y.opp.cls] - G.VALUE[x.opp.cls] || y.score - x.score);
-  if (cands.exhausted) return { forced: { move: blocks[0].key, source: "longest-defence", note: `every move loses by force; ${blocks[0].desc}` }, cands, lost: true };
+  if (cands.exhausted) return { forced: { move: blocks[0].key, source: "longest-defence", note: `no checked move holds; ${blocks[0].desc}` }, cands };
   // The search ran out of budget before the ranking: Jev picks among the checked blocks (or, if none was checked, the ranking as it stands).
-  return { pool: (blocks.length ? blocks : cands.all).slice(0, max), cands, oppThreatens: blocks.length > 0 };
+  return { pool: (blocks.length ? blocks : cands.all).slice(0, max), cands, oppThreatens: blocks.length > 0, allLose: blocks.length > 0 };
+}
+
+// The note on a decision: what the pool is, plus whether every checked move loses and whether the budget cut the search.
+function planNote(plan, opp, base) {
+  const parts = base ? [base] : [];
+  if (plan.allLose) parts.push("no checked move holds; blocks first");
+  if (plan.cands && !plan.cands.exhausted) parts.push("search cut short by the CPU budget");
+  return parts.length ? parts.join("; ") : null;
 }
 
 export function buildPlayerRequest(board, moves, me, opp, plan) {
@@ -191,7 +201,7 @@ export async function handleMove(body, env = {}) {
         info = { ...base, move: plan.forced.move, source: plan.forced.source, note: plan.forced.note, latencyMs: 0, usage: null, model: null, optionCount: 0, answers: null, candidates: plan.cands ? plan.cands.top.map(slim) : [], heuristicRank: null, io: null };
       } else if (plan.pool.length < 2) {
         const only = plan.pool[0];
-        info = { ...base, move: only.key, source: "only-move", note: plan.oppThreatens ? `${opp} threatens; ${only.key} is the single answer` : "single candidate", latencyMs: 0, usage: null, model: null, optionCount: 1, answers: null, candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === only.key) + 1, io: null };
+        info = { ...base, move: only.key, source: "only-move", note: planNote(plan, opp, plan.oppThreatens ? `${opp} threatens; ${only.key} is the single answer` : "single candidate"), latencyMs: 0, usage: null, model: null, optionCount: 1, answers: null, candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === only.key) + 1, io: null };
       } else {
         const { state: st, questions, legal } = buildPlayerRequest(board, mv, me, opp, plan);
         const r = await askJev(be, st, questions, () => mockFromScores(mockScores(board, me, opp, legal), legal, null));
@@ -199,7 +209,7 @@ export async function handleMove(body, env = {}) {
         const ok = best.choice !== null && legal.has(best.choice);
         const move = ok ? best.choice : plan.pool[0].key;
         info = {
-          ...base, move, source: ok ? "best" : "fallback", note: plan.oppThreatens ? `${opp} threatens; pool restricted to answers` : null,
+          ...base, move, source: ok ? "best" : "fallback", note: planNote(plan, opp, plan.oppThreatens ? `${opp} threatens; pool restricted to answers` : null),
           latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
           answers: { best_move: pack(best) }, candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === move) + 1, io: r.io,
         };
