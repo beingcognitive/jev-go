@@ -76,13 +76,14 @@ export function buildGoFullRequest(st, moves, me, opp, analyses, mode) {
 
 // player: code filters and ranks; Jev picks from the pool. After the opponent's pass, passing ends the game on the
 // count as it stands, so it is offered then only to a side that is ahead. Otherwise it is offered when nothing
-// scores or when every legal point is self-destructive: a self-atari, an eye fill, or a point inside our own eye
-// space (a seki and our last eyes are kept by passing), and near the move cap regardless. A single legal point is played without a call only when pass is not on offer.
+// scores or when every legal point is self-destructive: a self-atari or an eye fill (a seki and our last eyes are
+// kept by passing), and near the move cap regardless. A point inside a larger eye space is not self-destructive: it
+// may be the one that makes two eyes, and the annotation says which. A single legal point is played without a call only when pass is not on offer.
 export function goPlayerPlan(st, me, opp, analyses, max = 12) {
   if (!analyses.length) return { forced: { move: "pass", source: "forced-pass", note: "no legal move" } };
   const pool = analyses.slice(0, max);
   const winning = Go.score(st.board).winner === me;
-  const selfDestructive = analyses.every((a) => a.selfAtari || a.eyeFill || a.ownEye);
+  const selfDestructive = analyses.every((a) => a.selfAtari || a.eyeFill);
   const includePass = st.count >= Go.MAX_MOVES - 10 || (st.last === "pass" ? winning || selfDestructive : pool[0].score <= 1 || selfDestructive);
   if (analyses.length === 1 && !includePass) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
   if (analyses.length === 1 && analyses[0].score <= 0) return { forced: { move: "pass", source: "forced-pass", note: "only legal move is worse than passing" } };

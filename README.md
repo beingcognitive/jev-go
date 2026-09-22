@@ -47,9 +47,10 @@ code without a call (a five, an open four, a forced block, mate in one) and are 
   ladder is called what it is. The state carries the count as
   it stands and every group short of liberties. Jev picks from the top twelve. `pass` can end the
   game on the count: after the opponent passed it is offered to a side that is ahead, or to any
-  side whose every legal point is a self-atari or lies inside its own eye space (so a seki and the
-  last eyes are kept); otherwise when nothing scores or every point is self-destructive, and always
-  near the 200-move cap. The option
+  side whose every legal point is a self-atari or fills an own eye (so a seki and the last eyes are
+  kept); otherwise when nothing scores or every point is self-destructive, and always near the
+  200-move cap. A point inside a larger eye space says whether it divides it into two eyes or only
+  fills it. The option
   says the score. Dead stones are not
   removed at the end, so capture them first.
 - **Chess**: rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0

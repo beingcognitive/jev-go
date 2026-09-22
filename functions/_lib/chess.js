@@ -81,6 +81,7 @@ export function status(c) {
 }
 
 const fileOf = (sq) => sq.charCodeAt(0) - 97, rankOf = (sq) => Number(sq[1]) - 1;
+const OX = (sq) => (8 - Number(sq[1])) * 16 + (sq.charCodeAt(0) - 97); // chess.js internal 0x88 square index
 const sqAt = (f, r) => FILES[f] + (r + 1);
 // Is the `color` piece on `sq` absolutely pinned to its king, so that capturing on `target` would be illegal?
 // Geometric: the king, the piece and an enemy slider on one line with nothing between; a capture along that
@@ -120,7 +121,7 @@ function bearing(c, square, color, freed = null) {
     const p = c.get(sq);
     if (!p) continue;
     const pin = pinned(c, sq, color, square);
-    if (pin && pin !== freed) { guards++; continue; }
+    if (pin && !(freed && freed.includes(pin))) { guards++; continue; }
     squares.push(sq);
     values.push(VALUE[p.type]);
     if (p.type !== "k" && (cheapest === null || VALUE[p.type] < cheapest)) { cheapest = VALUE[p.type]; attacker = p.type; }
@@ -143,8 +144,8 @@ function see(target, att, def, attGuards = 0, defGuards = 0) {
 function riskOn(c, square, val, me) {
   const att = bearing(c, square, otherColor(me));
   if (!att.values.length) return { risk: 0, attacker: null, defended: false };
-  // when the only capturer is the piece pinning one of our defenders, that capture releases the pin
-  const def = bearing(c, square, me, att.squares.length === 1 ? att.squares[0] : null);
+  // a defender pinned by one of the capturers is freed once that piece captures (approximation: counted as free)
+  const def = bearing(c, square, me, att.squares);
   if (!def.values.length && !def.guards) return { risk: val, attacker: att.attacker ?? "k", defended: false };
   const risk = see(val, att.values, def.values, att.guards, def.guards);
   return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: def.values.length > 0 }; // a pinned guard cannot recapture
@@ -175,17 +176,19 @@ export function analyzeMove(c, m, deep = true) {
   let self = mate ? { risk: 0, attacker: null } : riskOn(c, m.to, moverVal, me);
   if (!mate && m.flags.includes("b")) { // a double pawn push: an enemy pawn beside it may take it en passant, landing on the skipped square
     const skipped = sqAt(fileOf(m.to), (rankOf(m.from) + rankOf(m.to)) / 2), f = fileOf(m.to), r = rankOf(m.to), opp = otherColor(me);
-    // only an enemy pawn beside the pushed pawn can take it, and only if that is legal (a pinned pawn cannot)
-    const legal = [f - 1, f + 1].map((x) => (x < 0 || x > 7 ? null : sqAt(x, r))).find((sq) => { if (!sq) return false; const q = c.get(sq);
+    // only an enemy pawn beside the pushed pawn can take it, and only if that is legal (a pinned pawn cannot); each
+    // capturer is played out, because each opens different lines, and the worst for us counts
+    const takers = [f - 1, f + 1].map((x) => (x < 0 || x > 7 ? null : sqAt(x, r))).filter((sq) => { if (!sq) return false; const q = c.get(sq);
       return q && q.type === "p" && q.color === opp && c.moves({ square: sq, verbose: true }).some((y) => y.flags.includes("e") && y.to === skipped); });
-    if (legal) {
-      // play the en passant capture (it can open a line for either side), then see what we win back on that square
-      c.move({ from: legal, to: skipped });
+    for (const from of takers) {
+      c.move({ from, to: skipped });
+      // what we win back: only legal recaptures count (a discovered check can forbid them all), then the static exchange
+      const first = c._moves().filter((y) => y.to === OX(skipped)).map((y) => VALUE[y.piece]).sort((a, b) => a - b); // internal: no notation
       const back = bearing(c, skipped, me), keep = bearing(c, skipped, opp);
-      const regain = see(VALUE.p, back.values, keep.values, back.guards, keep.guards);
+      const regain = first.length ? see(VALUE.p, [first[0], ...back.values.filter((v, i) => i !== back.values.indexOf(first[0]))], keep.values, back.guards, keep.guards) : 0;
       c.undo();
       const risk = VALUE.p - regain;
-      if (risk > self.risk) self = { risk, attacker: "p", defended: back.values.length > 0, ep: true };
+      if (risk > self.risk) self = { risk, attacker: "p", defended: first.length > 0, ep: true };
     }
   }
   const other = !deep || mate || stalemate ? { worst: 0, what: null } : worstHanging(c, me, m.to);
@@ -220,7 +223,6 @@ export function analyzeMove(c, m, deep = true) {
 // Does the opponent have a mating reply after move `a`? The mating reply's SAN, or null. Uses chess.js's internal
 // generator (vendored, pinned at 1.4.0): _makeMove/_undoMove leave the repetition counts alone and restore the hash.
 // One legal generation for the replies; a second only after a reply that gives check. `c` is restored.
-const OX = (sq) => (8 - Number(sq[1])) * 16 + (sq.charCodeAt(0) - 97);
 export function mateReply(c, a) {
   const mv = c._moves({ square: a.from }).find((x) => x.to === OX(a.to) && (x.promotion || null) === (a.promotion || null));
   if (!mv) return null;

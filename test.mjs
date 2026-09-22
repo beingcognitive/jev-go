@@ -701,17 +701,33 @@ test("go and chess: third review round (Codex): equal snapback, king recapture t
   assert.equal(e4.hangs, false, e4.desc); assert.equal(e4.gain, 0);
 });
 test("fourth review round (Fable): own eye space keeps pass on offer; a pin released by the pinner's own capture", () => {
-  const rows = ["XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXX...XXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXOOOO", "XXXXXOOOO"];
+  // a straight three: the middle point makes two eyes, the ends only fill (legal board: one X group, three liberties)
+  const rows = ["XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXX...XXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX"];
   const board = rows.map((x) => x.split(""));
-  const st = { board, history: new Set([Go.hash(board)]), last: "H1", count: 120, captures: { X: 0, O: 0 } };
-  const an = Go.analyzeAll(board, "X", "O", st.history, st.last);
-  assert.ok(an.every((x) => x.ownEye), an.map((x) => x.key).join(" "));
-  assert.equal(goPlayerPlan(st, "X", "O", an).includePass, true);
+  const an = Go.analyzeAll(board, "X", "O", new Set([Go.hash(board)]), null);
+  assert.equal(an[0].key, "E5"); assert.match(an[0].desc, /divides own eye space into 2 eyes/);
+  assert.match(an.find((x) => x.key === "D5").desc, /fills own eye space/);
+  // pass is not offered in place of the eye-making move (fifth round, Codex: legal replay position, X to move)
+  const r2 = ["XXXXXOOOO", "XXXXXOOOO", "XXXXXOO.O", "XXXXXOOOO", "X...XOOOO", "XXXXXOOOO", "XXXXXOO.O", "XXXXXOOOO", "XXXXXOOOO"].map((x) => x.split(""));
+  const st2 = { board: r2, history: new Set([Go.hash(r2)]), last: "H1", count: 84, captures: { X: 0, O: 0 } };
+  const an2 = Go.analyzeAll(r2, "X", "O", st2.history, st2.last);
+  assert.equal(an2[0].key, "C5"); assert.equal(goPlayerPlan(st2, "X", "O", an2).includePass, false);
   const c = fenGame("4k3/8/4q3/3R4/8/4N3/P2P4/4K3 w - - 0 1"); // Qe6 pins Ne3, but Qxd5 releases it and Nxd5 recaptures
   assert.equal(C.analyzeAll(c).find((x) => x.key === "a3").oppBest, 0);
   const x = goBoard({ A1: "X", B3: "X", B4: "X", A5: "X", A3: "O", A4: "O", B1: "O", B2: "O", C1: "O", C2: "O", C3: "O", C4: "O", B5: "O", A6: "O" });
   const a2 = Go.analyzeMove(x, ...gat("A2"), "X", "O", new Set([Go.hash(x)]), "C4");
   assert.equal(a2.selfAtari, true, a2.desc); // 2 for 2: O takes straight back
+});
+
+test("fifth review round (Codex): en passant under discovered check, the worse of two capturers, a pinner that captures second", () => {
+  const disc = fenGame("k2r4/8/8/4R3/3p4/8/4P3/3K4 w - - 0 1"); // e4 dxe3+ and Rxe3 is illegal
+  const e4a = C.analyzeAll(disc).find((a) => a.key === "e4");
+  assert.equal(e4a.hangs, true, e4a.desc); assert.equal(e4a.gain, -1);
+  const two = fenGame("8/8/8/2B1p3/R2p1p1k/8/4P3/K7 w - - 0 1"); // fxe3 leaves d4 blocking the bishop
+  const e4b = C.analyzeAll(two).find((a) => a.key === "e4");
+  assert.equal(e4b.hangs, true, e4b.desc);
+  const second = fenGame("3rk3/8/4q3/3R4/2P5/4N3/P2P4/4K3 w - - 0 1"); // Rxd5 cxd5 Qxd5 Nxd5: even
+  assert.equal(C.analyzeAll(second).find((a) => a.key === "a3").oppBest, 0);
 });
 
 test("chess: the fast mate test agrees with the slow one", () => {
