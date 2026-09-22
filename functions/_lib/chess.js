@@ -85,65 +85,69 @@ const sqAt = (f, r) => FILES[f] + (r + 1);
 // Is the `color` piece on `sq` absolutely pinned to its king, so that capturing on `target` would be illegal?
 // Geometric: the king, the piece and an enemy slider on one line with nothing between; a capture along that
 // same line stays legal. A king in check is left to the approximation (its captures are evasions anyway).
+// Returns the pinner's square, or null when the piece is free to take on `target`.
 function pinned(c, sq, color, target) {
   const p = c.get(sq);
-  if (!p || p.type === "k") return false;
+  if (!p || p.type === "k") return null;
   const king = c.findPiece({ type: "k", color })[0];
-  if (!king) return false;
+  if (!king) return null;
   const df = Math.sign(fileOf(sq) - fileOf(king)), dr = Math.sign(rankOf(sq) - rankOf(king));
   const adf = Math.abs(fileOf(sq) - fileOf(king)), adr = Math.abs(rankOf(sq) - rankOf(king));
-  if (!(adf === 0 || adr === 0 || adf === adr)) return false;   // not on a line from the king
+  if (!(adf === 0 || adr === 0 || adf === adr)) return null;   // not on a line from the king
   const diagonal = adf === adr;
   // nothing between the king and the piece
-  for (let f = fileOf(king) + df, r = rankOf(king) + dr; f !== fileOf(sq) || r !== rankOf(sq); f += df, r += dr) if (c.get(sqAt(f, r))) return false;
+  for (let f = fileOf(king) + df, r = rankOf(king) + dr; f !== fileOf(sq) || r !== rankOf(sq); f += df, r += dr) if (c.get(sqAt(f, r))) return null;
   // the first piece beyond it must be an enemy slider of the right kind
   for (let f = fileOf(sq) + df, r = rankOf(sq) + dr; f >= 0 && f < 8 && r >= 0 && r < 8; f += df, r += dr) {
     const q = c.get(sqAt(f, r));
     if (!q) continue;
-    if (q.color === color) return false;
-    if (!(q.type === "q" || (diagonal ? q.type === "b" : q.type === "r"))) return false;
+    if (q.color === color) return null;
+    if (!(q.type === "q" || (diagonal ? q.type === "b" : q.type === "r"))) return null;
     // pinned: a capture is still legal along the pin line (the target is on the king-piece line, beyond or before the piece)
     const tf = fileOf(target) - fileOf(king), tr = rankOf(target) - rankOf(king);
     const onLine = df === 0 ? tf === 0 && Math.sign(tr) === dr : dr === 0 ? tr === 0 && Math.sign(tf) === df : Math.abs(tf) === Math.abs(tr) && Math.sign(tf) === df && Math.sign(tr) === dr;
-    return !onLine;
+    return onLine ? null : sqAt(f, r);
   }
-  return false;
+  return null;
 }
 // Every `color` piece bearing on `square` and free to take there (absolutely pinned pieces are left out unless
 // the capture runs along the pin): values cheapest first with the king (0) last, plus the cheapest non-king
 // attacker's type. One board scan per side.
-function bearing(c, square, color) {
-  const values = [];
-  let attacker = null, cheapest = null;
+function bearing(c, square, color, freed = null) {
+  const values = [], squares = [];
+  let attacker = null, cheapest = null, guards = 0;
   for (const sq of c.attackers(square, color)) {
     const p = c.get(sq);
-    if (!p || pinned(c, sq, color, square)) continue;
+    if (!p) continue;
+    const pin = pinned(c, sq, color, square);
+    if (pin && pin !== freed) { guards++; continue; }
+    squares.push(sq);
     values.push(VALUE[p.type]);
     if (p.type !== "k" && (cheapest === null || VALUE[p.type] < cheapest)) { cheapest = VALUE[p.type]; attacker = p.type; }
   }
   values.sort((x, y) => (x === 0 ? 1 : y === 0 ? -1 : x - y));
-  return { values, attacker, king: values.length > 0 && values[values.length - 1] === 0 };
+  return { values, squares, attacker, king: values.length > 0 && values[values.length - 1] === 0, guards };
 }
 // Material a `me` piece worth `val` on `square` is likely to lose: a static exchange over every attacker
 // and defender, cheapest piece first. A king may only take once nothing defends the square any more.
 // One recapture is not enough to call a piece safe: two attackers against one defender win it outright.
 // What the side to move wins by capturing a piece worth `target` with attackers `att` against defenders `def`
 // (both cheapest first, king = 0 last). The capturer may decline, so the result is never negative.
-function see(target, att, def) {
+// `attGuards` / `defGuards`: pinned pieces of each side bearing on the square; they never capture, but a king
+// may not take on a square they guard, at any step of the exchange.
+function see(target, att, def, attGuards = 0, defGuards = 0) {
   if (!att.length) return 0;
-  if (att[0] === 0 && def.length) return 0;            // a king cannot capture a defended piece
-  return Math.max(0, target - see(att[0], def, att.slice(1)));
+  if (att[0] === 0 && (def.length || defGuards)) return 0; // a king cannot capture a defended piece
+  return Math.max(0, target - see(att[0], def, att.slice(1), defGuards, attGuards));
 }
 function riskOn(c, square, val, me) {
   const att = bearing(c, square, otherColor(me));
   if (!att.values.length) return { risk: 0, attacker: null, defended: false };
-  const def = bearing(c, square, me);
-  // A king may not step onto a guarded square, and a pinned piece still guards it: only the king attacks and some
-  // piece of ours bears on the square, pinned or not, so nothing can take there.
-  if (att.values.every((v) => v === 0) && c.attackers(square, me).length) return { risk: 0, attacker: null, defended: true };
-  if (!def.values.length) return { risk: val, attacker: att.attacker ?? "k", defended: false };
-  const risk = see(val, att.values, def.values);
-  return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: true };
+  // when the only capturer is the piece pinning one of our defenders, that capture releases the pin
+  const def = bearing(c, square, me, att.squares.length === 1 ? att.squares[0] : null);
+  if (!def.values.length && !def.guards) return { risk: val, attacker: att.attacker ?? "k", defended: false };
+  const risk = see(val, att.values, def.values, att.guards, def.guards);
+  return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: def.values.length > 0 }; // a pinned guard cannot recapture
 }
 // After a move by `me`: the worst hanging `me` piece other than the one on `skip` (one-ply opponent reply).
 function worstHanging(c, me, skip) {
@@ -172,13 +176,16 @@ export function analyzeMove(c, m, deep = true) {
   if (!mate && m.flags.includes("b")) { // a double pawn push: an enemy pawn beside it may take it en passant, landing on the skipped square
     const skipped = sqAt(fileOf(m.to), (rankOf(m.from) + rankOf(m.to)) / 2), f = fileOf(m.to), r = rankOf(m.to), opp = otherColor(me);
     // only an enemy pawn beside the pushed pawn can take it, and only if that is legal (a pinned pawn cannot)
-    const legal = [f - 1, f + 1].some((x) => { if (x < 0 || x > 7) return false; const sq = sqAt(x, r), q = c.get(sq);
+    const legal = [f - 1, f + 1].map((x) => (x < 0 || x > 7 ? null : sqAt(x, r))).find((sq) => { if (!sq) return false; const q = c.get(sq);
       return q && q.type === "p" && q.color === opp && c.moves({ square: sq, verbose: true }).some((y) => y.flags.includes("e") && y.to === skipped); });
     if (legal) {
-      const att = bearing(c, skipped, opp).values, def = bearing(c, skipped, me).values;
-      const others = att.filter((v, i) => !(v === VALUE.p && i === att.indexOf(VALUE.p))); // the capturing pawn goes first, then the rest
-      const risk = !def.length ? VALUE.p : see(VALUE.p, [VALUE.p, ...others], def);
-      if (risk > self.risk) self = { risk, attacker: "p", defended: def.length > 0, ep: true };
+      // play the en passant capture (it can open a line for either side), then see what we win back on that square
+      c.move({ from: legal, to: skipped });
+      const back = bearing(c, skipped, me), keep = bearing(c, skipped, opp);
+      const regain = see(VALUE.p, back.values, keep.values, back.guards, keep.guards);
+      c.undo();
+      const risk = VALUE.p - regain;
+      if (risk > self.risk) self = { risk, attacker: "p", defended: back.values.length > 0, ep: true };
     }
   }
   const other = !deep || mate || stalemate ? { worst: 0, what: null } : worstHanging(c, me, m.to);
@@ -208,6 +215,27 @@ export function analyzeMove(c, m, deep = true) {
   if (!parts.length) parts.push("quiet move");
   return { key: m.san, from: m.from, to: m.to, piece: m.piece, captured: m.captured || null, promotion: m.promotion || null,
     gain, oppBest: other.worst, mate, check, castles, develops, hangs: self.risk > 0, stalemate, score, desc: parts.join("; ") };
+}
+
+// Does the opponent have a mating reply after move `a`? The mating reply's SAN, or null. Uses chess.js's internal
+// generator (vendored, pinned at 1.4.0): _makeMove/_undoMove leave the repetition counts alone and restore the hash.
+// One legal generation for the replies; a second only after a reply that gives check. `c` is restored.
+const OX = (sq) => (8 - Number(sq[1])) * 16 + (sq.charCodeAt(0) - 97);
+export function mateReply(c, a) {
+  const mv = c._moves({ square: a.from }).find((x) => x.to === OX(a.to) && (x.promotion || null) === (a.promotion || null));
+  if (!mv) return null;
+  const us = c.turn();
+  c._makeMove(mv);
+  try {
+    const replies = c._moves();
+    for (const r of replies) {
+      c._makeMove(r);
+      let mate = false;
+      try { mate = c._isKingAttacked(us) && c._moves().length === 0; } finally { c._undoMove(); }
+      if (mate) return c._moveToSan(r, replies);
+    }
+    return null;
+  } finally { c._undoMove(); }
 }
 
 // What a move threatens: the worst opponent piece left attacked and under-defended after it.

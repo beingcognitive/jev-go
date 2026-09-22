@@ -43,8 +43,8 @@ export function buildChessFullRequest(c, moves, me, analyses, mode) {
 }
 
 // player: code plays mate in one and single legal moves; otherwise Jev picks from the ranked pool.
-// The pool holds only moves that do not allow mate in one (chess.js marks a mating reply with # in its SAN, so
-// this is one move generation per candidate, not a search). Moves are tried in rank order until `max` safe
+// The pool holds only moves that do not allow mate in one (C.mateReply: one reply generation per candidate, and a
+// defence generation only after a checking reply; not a search). Moves are tried in rank order until `max` safe
 // ones are found, so a defence ranked last is still found. When every move allows mate, Jev still gets the
 // best-ranked ones, each saying so, and the note says so too.
 export function chessPlayerPlan(c, analyses, max = 12) {
@@ -54,9 +54,7 @@ export function chessPlayerPlan(c, analyses, max = 12) {
   if (analyses.length === 1) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
   const safe = [], loses = [];
   for (const a of analyses) {
-    c.move(a.key);
-    const mating = c.moves().find((san) => san.endsWith("#"));
-    c.undo();
+    const mating = C.mateReply(c, a);
     if (mating) { a.allowsMate = mating; a.score -= 100; a.desc += `; allows mate in one (${mating})`; loses.push(a); }
     else if (safe.push(a) >= max) break;
   }

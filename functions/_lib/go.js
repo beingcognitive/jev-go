@@ -127,6 +127,20 @@ export function score(board) {
   return { black, white, komi: KOMI, stones, territory: terr, winner: black > white ? "X" : "O", margin: Math.abs(black - white) };
 }
 
+// The colour that alone borders the empty region holding (r,c), or null.
+function regionOwner(board, r, c) {
+  const seen = new Set([r * SIZE + c]), stack = [[r, c]], borders = new Set();
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    for (const [x, y] of N4(a, b)) {
+      const w = board[x][y], j = x * SIZE + y;
+      if (w === ".") { if (!seen.has(j)) { seen.add(j); stack.push([x, y]); } }
+      else borders.add(w);
+    }
+  }
+  return borders.size === 1 ? [...borders][0] : null;
+}
+
 // ---------- move annotations ----------
 
 const ordinal = (n) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
@@ -137,7 +151,7 @@ const LINE_BONUS = { 1: -4, 2: -1, 3: 2, 4: 2, 5: 1 };
 // atari); a line where the defender reaches three liberties escapes. Legal moves only, ko and superko included:
 // `history` is extended along each line and restored. Returns "captured", "escaped", or "unclear" when the read
 // runs past `budget` positions. Nets and other non-atari captures are not read. Boards are copied by tryMove.
-export function chase(board, r, c, me, opp, history = null, budget = 400) {
+export function chase(board, r, c, me, opp, history = null, budget = 250) {
   const hist = new Set(history || []);
   let nodes = 0;
   const attack = (b, depth) => { // opp to move; the group has two liberties
@@ -195,13 +209,13 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   }
   const own = group(after, r, c);
   const libsAfter = own.liberties.size;
+  const histAfter = history ? new Set([...history, hash(after)]) : null;
   // Every own group short of liberties (one or two) before the move, including ones helped by capturing the
   // attacker, which need not touch (r,c): saved (out of atari to three liberties, or to two and the ladder read
   // says it escapes), doomed (out of atari only into a ladder that captures it), running (out of atari to two
   // liberties, the read unsettled), or rescued (from two liberties to three or more). Groups left short are listed
   // once in the state, not on every option.
   let saved = 0, doomed = 0, running = 0, rescued = 0;
-  const histAfter = history ? new Set([...history, hash(after)]) : null;
   const seenSaved = new Set();
   for (let x = 0; x < SIZE; x++) for (let y = 0; y < SIZE; y++) {
     if (board[x][y] !== me || seenSaved.has(x * SIZE + y)) continue;
@@ -225,10 +239,14 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
     for (const [a, b] of g.stones) seenAfter.add(a * SIZE + b);
     if (g.liberties.size === 1) { atari += g.stones.length; atariGroups++; }
   }
-  const selfAtari = libsAfter === 1 && own.stones.length > t.captured; // a capture bigger than the group is a trade; smaller, it is a snapback
+  // In atari after the move: a self-atari, unless it captured and the opponent cannot legally take back (ko)
+  let selfAtari = libsAfter === 1;
+  if (selfAtari && t.captured) { const l = [...own.liberties][0]; selfAtari = !tryMove(after, Math.floor(l / SIZE), l % SIZE, opp, histAfter).error; }
   const connects = ownBefore.length >= 2 ? ownBefore.length : 0;
   const neighborsInBounds = N4(r, c).length;
   const eyeFill = ownNeighbors === neighborsInBounds && t.captured === 0;
+  // Inside our own eye space: the empty region holding (r,c) borders only our stones, and nothing is captured.
+  const ownEye = !t.captured && oppNeighbors === 0 && regionOwner(board, r, c) === me;
   const line = Math.min(r, c, SIZE - 1 - r, SIZE - 1 - c) + 1;
   const lp = lastKey ? fromKey(lastKey) : null;
   const nearLast = !!(lp && Math.max(Math.abs(lp.r - r), Math.abs(lp.c - c)) <= 1);
@@ -248,7 +266,7 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   parts.push(`${ordinal(line)} line`);
   parts.push(`${libsAfter} libert${libsAfter === 1 ? "y" : "ies"} after`);
   if (oppNeighbors) parts.push(`touches ${oppNeighbors} ${opp} stone${oppNeighbors > 1 ? "s" : ""}`);
-  return { key: key(r, c), r, c, captured: t.captured, capturedKeys: t.capturedKeys, saved, doomed, running, rescued, atari, atariGroups, connects, selfAtari, eyeFill, line, libsAfter, oppNeighbors, nearLast, score: scoreV, desc: parts.join("; ") };
+  return { key: key(r, c), r, c, captured: t.captured, capturedKeys: t.capturedKeys, saved, doomed, running, rescued, ownEye, atari, atariGroups, connects, selfAtari, eyeFill, line, libsAfter, oppNeighbors, nearLast, score: scoreV, desc: parts.join("; ") };
 }
 
 // The pass option always carries the count as it stands, because passing can end the game on it.

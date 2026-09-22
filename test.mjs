@@ -521,7 +521,7 @@ test("go: a ladder is not 'saved' and a snapback is a self-atari, however many s
   assert.ok(an.indexOf(a1) > 12, "the snapback is out of the pool");
   assert.equal(an[0].key === "A1", false);
 });
-test("go: the state carries the count, and a trailing side is never offered a game-ending pass", () => {
+test("go: the state carries the count, and a trailing side is not offered a game-ending pass while it has a real move", () => {
   const st = goSeq("X E5, O E7, X E3, O C5, X G5, O C3, X G7, O C7, X A3, O A7, X D2, O B2, X F2, O H2, X J5, O pass");
   const an = Go.analyzeAll(st.board, "X", "O", st.history, st.last);
   const plan = goPlayerPlan(st, "X", "O", an);
@@ -685,6 +685,45 @@ test("go: the ladder read is legal (ko), exhaustive for the defender, and a seki
   const plan = goPlayerPlan(st, "X", "O", an);
   assert.equal(plan.includePass, true);
   assert.ok(an.every((a) => a.score < 0), "a self-atari of a big group never scores as good");
+  // the trailing side in the same seki is offered pass too, even after the opponent passed: its moves only lose more
+  const w = { board, history: new Set([Go.hash(board)]), last: "pass", count: 160, captures: { X: 0, O: 0 } };
+  assert.equal(goPlayerPlan(w, "O", "X", Go.analyzeAll(board, "O", "X", w.history, w.last)).includePass, true);
+});
+test("go and chess: third review round (Codex): equal snapback, king recapture through a pinned guard, en passant regained", () => {
+  const snap = goBoard({ A6: "X", B5: "X", B4: "X", A2: "X", A5: "O", A4: "O", B3: "O", B2: "O", A1: "O" });
+  const a3 = Go.analyzeMove(snap, ...gat("A3"), "X", "O", new Set([Go.hash(snap)]), null);
+  assert.equal(a3.captured, 2); assert.equal(a3.selfAtari, true, a3.desc);
+  assert.ok(Go.analyzeAll(snap, "X", "O", new Set([Go.hash(snap)]), null)[0].key !== "A3");
+  const pinGuard = fenGame("4k3/4n3/8/r2p4/2KQ4/8/8/4R3 w - - 0 1"); // Qxd5 Rxd5 and Kxd5 is illegal (Ne7 is pinned but guards d5)
+  assert.equal(C.analyzeAll(pinGuard).find((a) => a.key === "Qxd5").gain, -8);
+  const back = fenGame("k7/8/8/4R3/3p4/8/4P3/K7 w - - 0 1"); // e4 dxe3 Rxe3: an even trade
+  const e4 = C.analyzeAll(back).find((a) => a.key === "e4");
+  assert.equal(e4.hangs, false, e4.desc); assert.equal(e4.gain, 0);
+});
+test("fourth review round (Fable): own eye space keeps pass on offer; a pin released by the pinner's own capture", () => {
+  const rows = ["XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXX...XXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXOOOO", "XXXXXOOOO"];
+  const board = rows.map((x) => x.split(""));
+  const st = { board, history: new Set([Go.hash(board)]), last: "H1", count: 120, captures: { X: 0, O: 0 } };
+  const an = Go.analyzeAll(board, "X", "O", st.history, st.last);
+  assert.ok(an.every((x) => x.ownEye), an.map((x) => x.key).join(" "));
+  assert.equal(goPlayerPlan(st, "X", "O", an).includePass, true);
+  const c = fenGame("4k3/8/4q3/3R4/8/4N3/P2P4/4K3 w - - 0 1"); // Qe6 pins Ne3, but Qxd5 releases it and Nxd5 recaptures
+  assert.equal(C.analyzeAll(c).find((x) => x.key === "a3").oppBest, 0);
+  const x = goBoard({ A1: "X", B3: "X", B4: "X", A5: "X", A3: "O", A4: "O", B1: "O", B2: "O", C1: "O", C2: "O", C3: "O", C4: "O", B5: "O", A6: "O" });
+  const a2 = Go.analyzeMove(x, ...gat("A2"), "X", "O", new Set([Go.hash(x)]), "C4");
+  assert.equal(a2.selfAtari, true, a2.desc); // 2 for 2: O takes straight back
+});
+
+test("chess: the fast mate test agrees with the slow one", () => {
+  for (const f of ["1R6/R5Q1/2p1k2p/8/3P4/4n1P1/7P/7K b - - 0 33", "1nb3k1/ppp2p1p/7Q/8/8/8/PBP2PPP/6K1 b - - 0 1", "rrb3k1/2p2p1p/7Q/n7/1n6/nP6/PBP2PPP/6K1 b - - 0 1",
+    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"]) {
+    const c = fenGame(f), fen = c.fen();
+    for (const a of C.analyzeAll(c)) {
+      c.move(a.key); const slow = c.moves().find((s) => s.endsWith("#")) || null; c.undo();
+      assert.equal(C.mateReply(c, a), slow, `${f} ${a.key}`);
+    }
+    assert.equal(c.fen(), fen);
+  }
 });
 test("chess: pinned pieces neither defend nor recapture; en passant is seen; development means leaving the home square", () => {
   const pin = fenGame("3k3b/8/3p4/8/8/5N2/8/3RK3 b - - 0 1"); // the d6 pawn is pinned by Rd1
