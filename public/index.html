@@ -225,7 +225,12 @@ pre.res{border-left:4px solid var(--wood);background:color-mix(in srgb,var(--woo
 #iolog{contain:inline-size} /* the play track is min-content on wide screens: the raw JSON must not feed its intrinsic width */
 .lb{width:100%;border-collapse:collapse;font-size:14px}
 .lb td,.lb th{padding:5px 8px 5px 0;border-bottom:1px solid var(--rule);text-align:left;white-space:nowrap}
-.marks{font-size:14px;color:var(--ink-2);line-height:1.5;padding-left:18px}
+.legend-d{margin-top:10px}
+.legend-d>summary{font-size:13px;color:var(--ink-2);cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:4px 0}
+.legend-d>summary::-webkit-details-marker{display:none}
+.legend-d>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid var(--ink-2);border-bottom:1.5px solid var(--ink-2);transform:rotate(-45deg);transition:transform .15s}
+.legend-d[open]>summary::before{transform:rotate(45deg)}
+.marks{font-size:14px;color:var(--ink-2);line-height:1.5;padding-left:18px;margin-top:6px}
 .marks li{margin:2px 0}
 
 /* ----- drawers: the menu on the left, settings on the right ----- */
@@ -243,7 +248,7 @@ dialog.gate h2{font:600 22px/1.2 var(--serif);font-variation-settings:"opsz" 36;
 dialog.gate p{margin:0 0 14px;font-size:15px}
 dialog.gate .help{margin:8px 0 0}
 /* last, so it wins every cascade tie above */
-@media (prefers-reduced-motion:reduce){details.io summary::before,details.panel>summary::after{transition:none}.ghost,.ghost.aim,.stone.new,.grid.chess .cell.check.justchecked{animation:none}.captured{display:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick,.pickc{transition:none}}
+@media (prefers-reduced-motion:reduce){details.io summary::before,details.panel>summary::after,.legend-d>summary::before{transition:none}.ghost,.ghost.aim,.stone.new,.grid.chess .cell.check.justchecked{animation:none}.captured{display:none}.piece{transition:none}.grid.chess .cell:hover .ghostpiece{animation:none}.heat,.cand,.truth,.pick,.pickc{transition:none}}
 </style>
 </head>
 <body>
@@ -305,12 +310,14 @@ dialog.gate .help{margin:8px 0 0}
       <div class="body">
         <div id="thought" class="kv"><span class="na">No move yet.</span></div>
         <ul class="opts" id="opts"></ul>
-        <h3>What the marks mean</h3>
-        <ul class="marks">
+        <details class="legend-d">
+          <summary>What the marks mean</summary>
+          <ul class="marks">
           <li>Green discs are Jev's five most likely moves, sized by probability. On wider screens the number on its last stone is how likely it thought that move was.</li>
           <li>Thin rings mark the other candidates code offered.</li>
           <li>"Via" says who decided: forced, only-move and longest-defence (no checked move holds; code blocks the biggest threat) were played by code without a call, best is Jev's own pick, and the heuristic rank is where that pick sat in the code's ordering.</li>
         </ul>
+        </details>
       </div>
     </details>
     <details class="panel" id="p-moves" open>
