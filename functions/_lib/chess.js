@@ -144,8 +144,10 @@ function see(target, att, def, attGuards = 0, defGuards = 0) {
 function riskOn(c, square, val, me) {
   const att = bearing(c, square, otherColor(me));
   if (!att.values.length) return { risk: 0, attacker: null, defended: false };
-  // a defender pinned by one of the capturers is freed once that piece captures (approximation: counted as free)
-  const def = bearing(c, square, me, att.squares);
+  // A defender is freed from its pin only when its pinner is the sole capturer (that capture releases it). With
+  // several capturers the pinned defender is left out: the others may take first while it is still pinned, so the
+  // read errs toward reporting a loss rather than hiding one.
+  const def = bearing(c, square, me, att.squares.length === 1 ? att.squares : null);
   if (!def.values.length && !def.guards) return { risk: val, attacker: att.attacker ?? "k", defended: false };
   const risk = see(val, att.values, def.values, att.guards, def.guards);
   return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: def.values.length > 0 }; // a pinned guard cannot recapture

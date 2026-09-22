@@ -127,17 +127,29 @@ export function score(board) {
   return { black, white, komi: KOMI, stones, territory: terr, winner: black > white ? "X" : "O", margin: Math.abs(black - white) };
 }
 
-// After a stone was placed at (r,c): how many separate empty regions its empty neighbours now belong to.
-function splitCount(board, r, c) {
+// After a stone was placed at (r,c): the separate empty regions its empty neighbours now belong to, and how many of
+// them are bordered only by the stone's own group (an eye of that group; a region touching another of our groups
+// may be a false eye, as when that group can be captured through it).
+function splitInfo(board, r, c) {
+  const own = new Set(group(board, r, c).stones.map(([a, b]) => a * SIZE + b));
   const seen = new Set();
-  let n = 0;
+  let regions = 0, eyes = 0;
   for (const [x, y] of N4(r, c)) {
     if (board[x][y] !== "." || seen.has(x * SIZE + y)) continue;
-    n++;
+    regions++;
+    let mine = true;
     const stack = [[x, y]]; seen.add(x * SIZE + y);
-    while (stack.length) { const [a, b] = stack.pop(); for (const [p, q] of N4(a, b)) { const j = p * SIZE + q; if (board[p][q] === "." && !seen.has(j)) { seen.add(j); stack.push([p, q]); } } }
+    while (stack.length) {
+      const [a, b] = stack.pop();
+      for (const [p, q] of N4(a, b)) {
+        const j = p * SIZE + q;
+        if (board[p][q] === ".") { if (!seen.has(j)) { seen.add(j); stack.push([p, q]); } }
+        else if (!own.has(j)) mine = false;
+      }
+    }
+    if (mine) eyes++;
   }
-  return n;
+  return { regions, eyes };
 }
 // The colour that alone borders the empty region holding (r,c), or null.
 function regionOwner(board, r, c) {
@@ -260,13 +272,13 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   // Inside our own eye space (the empty region holding (r,c) borders only our stones, nothing captured): does the
   // move divide it into two or more eyes, or only fill it? A straight three is alive with its middle point played.
   const ownEye = !t.captured && oppNeighbors === 0 && regionOwner(board, r, c) === me;
-  const eyesAfter = ownEye ? splitCount(after, r, c) : 0;
+  const split = ownEye ? splitInfo(after, r, c) : { regions: 0, eyes: 0 };
   const line = Math.min(r, c, SIZE - 1 - r, SIZE - 1 - c) + 1;
   const lp = lastKey ? fromKey(lastKey) : null;
   const nearLast = !!(lp && Math.max(Math.abs(lp.r - r), Math.abs(lp.c - c)) <= 1);
   let scoreV = t.captured * 12 + saved * 10 + running * 4 + rescued * 4 - doomed * 2 + atari * 4 + connects * 2 + Math.min(libsAfter, 4) + (LINE_BONUS[line] || 0) + oppNeighbors * 0.5 + (nearLast ? 1 : 0);
   if (selfAtari) scoreV -= 10 + 5 * own.stones.length + atari * 4; // the opponent moves first: our atari counts for nothing
-  if (ownEye && !eyeFill) scoreV += eyesAfter >= 2 ? 6 : -3;
+  if (ownEye && !eyeFill) scoreV += split.eyes >= 2 ? 6 : split.regions >= 2 ? 0 : -3;
   if (eyeFill) scoreV -= 25;
   const parts = [];
   if (t.captured) parts.push(`captures ${t.captured} ${opp} stone${t.captured > 1 ? "s" : ""}`);
@@ -278,7 +290,7 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   if (connects) parts.push(`connects ${connects} ${me} groups`);
   if (selfAtari) parts.push(`self-atari (${own.stones.length} stone${own.stones.length > 1 ? "s" : ""} left with one liberty${t.captured ? ", so the capture can be taken straight back" : ""})`);
   if (eyeFill) parts.push(`fills own eye`);
-  else if (ownEye) parts.push(eyesAfter >= 2 ? `divides own eye space into ${eyesAfter} eyes` : `fills own eye space`);
+  else if (ownEye) parts.push(split.eyes >= 2 ? `divides own eye space into ${split.eyes} eyes of this group` : split.regions >= 2 ? `separates own eye space into ${split.regions} regions (not all of them eyes of this group)` : `fills own eye space`);
   parts.push(`${ordinal(line)} line`);
   parts.push(`${libsAfter} libert${libsAfter === 1 ? "y" : "ies"} after`);
   if (oppNeighbors) parts.push(`touches ${oppNeighbors} ${opp} stone${oppNeighbors > 1 ? "s" : ""}`);

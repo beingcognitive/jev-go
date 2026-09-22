@@ -705,7 +705,7 @@ test("fourth review round (Fable): own eye space keeps pass on offer; a pin rele
   const rows = ["XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXX...XXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX"];
   const board = rows.map((x) => x.split(""));
   const an = Go.analyzeAll(board, "X", "O", new Set([Go.hash(board)]), null);
-  assert.equal(an[0].key, "E5"); assert.match(an[0].desc, /divides own eye space into 2 eyes/);
+  assert.equal(an[0].key, "E5"); assert.match(an[0].desc, /divides own eye space into 2 eyes of this group/);
   assert.match(an.find((x) => x.key === "D5").desc, /fills own eye space/);
   // pass is not offered in place of the eye-making move (fifth round, Codex: legal replay position, X to move)
   const r2 = ["XXXXXOOOO", "XXXXXOOOO", "XXXXXOO.O", "XXXXXOOOO", "X...XOOOO", "XXXXXOOOO", "XXXXXOO.O", "XXXXXOOOO", "XXXXXOOOO"].map((x) => x.split(""));
@@ -726,8 +726,13 @@ test("fifth review round (Codex): en passant under discovered check, the worse o
   const two = fenGame("8/8/8/2B1p3/R2p1p1k/8/4P3/K7 w - - 0 1"); // fxe3 leaves d4 blocking the bishop
   const e4b = C.analyzeAll(two).find((a) => a.key === "e4");
   assert.equal(e4b.hangs, true, e4b.desc);
-  const second = fenGame("3rk3/8/4q3/3R4/2P5/4N3/P2P4/4K3 w - - 0 1"); // Rxd5 cxd5 Qxd5 Nxd5: even
-  assert.equal(C.analyzeAll(second).find((a) => a.key === "a3").oppBest, 0);
+});
+test("sixth review round (Codex): a pin is released only by a sole capturer; false eyes are not eyes", () => {
+  const hidden = fenGame("k2r4/8/8/8/4q3/3NR3/P3K3/8 w - - 0 1"); // a3 Rxd3: Re3 stays pinned by Qe4, and Qe4 keeps the king off d3
+  assert.equal(C.analyzeAll(hidden).find((a) => a.key === "a3").oppBest, 3);
+  const rows = ["OOOOOOOOO", "O.OOO.OOO", "OOOOOOOOO", "OOOXXXOOO", "OOX...XOO", "OOOXXXOOO", "OOOOOOOOO", "O.OOO.OOO", "OOOOOOOOO"].map((x) => x.split(""));
+  const e5 = Go.analyzeAll(rows, "X", "O", new Set([Go.hash(rows)]), null).find((a) => a.key === "E5");
+  assert.doesNotMatch(e5.desc, /2 eyes/); assert.match(e5.desc, /separates own eye space into 2 regions/);
 });
 
 test("chess: the fast mate test agrees with the slow one", () => {
