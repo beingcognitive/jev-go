@@ -50,23 +50,26 @@ function threatSummary(cands, me, opp) {
   const pick = (side, classes) => cands.all.filter((c) => classes.includes(c[side].cls)).map((c) => c.key).slice(0, 6);
   const s = {};
   const add = (k, v) => { if (v.length) s[k] = v; };
-  add(`${opp}_can_make_open_four_at`, pick("opp", ["open_four"]));
-  add(`${opp}_can_make_four_at`, pick("opp", ["four", "four_three", "double_four"]));
-  add(`${opp}_can_make_open_three_at`, pick("opp", ["open_three", "double_three"]));
-  add(`${me}_can_make_four_at`, pick("me", ["four", "four_three", "double_four"]));
-  add(`${me}_can_make_open_three_at`, pick("me", ["open_three", "double_three"]));
+  // Forks that win outright get their own line: a four-plus-three is not "a four", and two open threes are not "an open three".
+  for (const [side, who] of [["opp", opp], ["me", me]]) {
+    add(`${who}_can_make_open_four_at`, pick(side, ["open_four"]));
+    add(`${who}_wins_outright_at`, pick(side, ["four_three", "double_four"]));
+    add(`${who}_can_make_four_at`, pick(side, ["four"]));
+    add(`${who}_can_make_two_open_threes_at`, pick(side, ["double_three"]));
+    add(`${who}_can_make_open_three_at`, pick(side, ["open_three"]));
+  }
   return s;
 }
 
 // player: code decides forced tactics; otherwise a ranked candidate pool for Jev.
 // Candidates that lose by force are dropped; when every checked move loses, code plays the longest defence.
-export function playerPlan(board, me, opp, max = 12) {
+export function playerPlan(board, me, opp, max = 12, budget = undefined) {
   const winPts = G.fivePointsFor(board, me);
   if (winPts.length) return { forced: { move: winPts[0], source: "forced-win", note: null } };
   const oppFive = G.fivePointsFor(board, opp);
   if (oppFive.length)
     return { forced: { move: oppFive[0], source: "forced-block", note: oppFive.length > 1 ? `${opp} has ${oppFive.length} winning points; blocking one` : null } };
-  const cands = G.candidates(board, me, opp, max);
+  const cands = G.candidates(board, me, opp, max, 30, budget);
   const of = cands.all.find((c) => c.me.cls === "open_four");
   if (of) return { forced: { move: of.key, source: "open-four", note: null }, cands };
   const checked = cands.all.filter((c) => c.checked);
@@ -75,7 +78,8 @@ export function playerPlan(board, me, opp, max = 12) {
   // Every checked move loses by force: blocks of the biggest threat first, to make the opponent prove the win.
   const blocks = [...checked].sort((x, y) => G.VALUE[y.opp.cls] - G.VALUE[x.opp.cls] || y.score - x.score);
   if (cands.exhausted) return { forced: { move: blocks[0].key, source: "longest-defence", note: `every move loses by force; ${blocks[0].desc}` }, cands, lost: true };
-  return { pool: blocks.slice(0, max), cands, oppThreatens: true }; // the search ran out of CPU before the ranking: Jev picks among the blocks
+  // The search ran out of budget before the ranking: Jev picks among the checked blocks (or, if none was checked, the ranking as it stands).
+  return { pool: (blocks.length ? blocks : cands.all).slice(0, max), cands, oppThreatens: blocks.length > 0 };
 }
 
 export function buildPlayerRequest(board, moves, me, opp, plan) {

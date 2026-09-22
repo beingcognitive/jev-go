@@ -115,7 +115,7 @@ test("gomoku: the danger search stays within the CPU budget and says when it did
   const pos = lostPos("D11", "C12", "E10", "D10", "J9", "I9");
   G.candidates(pos, "O", "X"); // warm
   const t0 = performance.now(); const c = G.candidates(pos, "O", "X"); const ms = performance.now() - t0;
-  assert.ok(ms < 60, `candidates took ${ms.toFixed(1)} ms`);
+  assert.ok(ms < 25, `candidates took ${ms.toFixed(1)} ms`); // 5-9 ms alone on a laptop; the suite runs in parallel
   assert.equal(c.exhausted, true); // the default budget covers this, the heaviest position we have
   const cut = G.candidates(pos, "O", "X", 12, 30, 0);
   assert.equal(cut.exhausted, false);
@@ -123,6 +123,85 @@ test("gomoku: the danger search stays within the CPU budget and says when it did
   const plan = playerPlan(pos, "O", "X");
   assert.equal(plan.forced.source, "longest-defence");
 });
+// Positions from the Codex fix-the-fix round (2026-09-22).
+const stones = (xs, os) => { const b = G.emptyBoard(); for (const k of xs.split(" ")) { const p = G.fromKey(k); b[p.r][p.c] = "X"; } for (const k of os.split(" ")) { const p = G.fromKey(k); b[p.r][p.c] = "O"; } return b; };
+test("gomoku: a four that wins by continuous fours is proven and offered, not cut off as lost", () => {
+  // O J7, X I7 (forced), O K8, X M6, O L9, X L8, O M10: then O has two five points (N11, I6)
+  const b = stones("D12 D11 H11 G10 J10 E9 D7 F7 E6 F6 H6 K6 G5 J5", "D10 F10 I10 L10 J9 E8 G8 H7 K7 L7 L6 D5 E5");
+  const c = G.candidates(b, "O", "X");
+  const j7 = c.all.find((x) => x.key === "J7");
+  assert.equal(j7.checked, true); assert.equal(j7.wins, true); assert.equal(j7.danger, null);
+  assert.match(j7.desc, /^O wins by force; O makes a four/);
+  assert.equal(c.top[0].key, "J7"); // a proven win ranks first
+  const p = G.fromKey("J7"); b[p.r][p.c] = "O"; const q = G.fromKey("I7"); b[q.r][q.c] = "X";
+  assert.equal(G.vcf(b, "O", "X", 3, G.nearPoints(b)), true);
+  assert.equal(G.vcf(b, "O", "X", 2, G.nearPoints(b)), false); // three more fours are needed
+});
+test("gomoku: the opponent's pending five outranks our own four; a lost position stays lost", () => {
+  // O F10 makes a four plus an open three, but X E9 then forces F9 and X K9 wins; every O move loses here
+  const b = stones("D12 K12 E11 F11 K11 G9 H9 I9 K8 L8 F7 H6 K6 J5", "H12 G11 H11 I11 E10 G10 D8 I8 L7 E6 I5 K4 L4");
+  const plan = playerPlan(b, "O", "X");
+  assert.equal(plan.forced?.source, "longest-defence");
+  const f10 = plan.cands.all.find((x) => x.key === "F10");
+  assert.deepEqual(f10.danger, { by: "E9", cls: "block" });
+  // inside the search, after O F10 X E9: a move that ignores X's five at F9 is lost to that five, whatever it makes
+  const p = G.fromKey("F10"); b[p.r][p.c] = "O"; const e9 = G.fromKey("E9"); b[e9.r][e9.c] = "X";
+  const pts = G.nearPoints(b);
+  assert.equal(G.dangerOf(b, { ...G.fromKey("A1"), key: "A1" }, "O", "X", 1, pts, pts)?.cls, "five");
+  assert.notEqual(G.dangerOf(b, { ...G.fromKey("F9"), key: "F9" }, "O", "X", 1, pts, pts)?.cls, "five");
+});
+test("gomoku: the cheap classifier sees a five in a later direction", () => {
+  const b = stones("B2 C2 D2 E2 M15 O13 M1 O3", "G8 H8 I8 F6 F7 F9 F10");
+  assert.equal(G.holdKey(b, "O", "X"), "F8"); // F8 is a five (vertical) and an open four (horizontal): the win must be seen
+});
+test("gomoku: the budget stops a runaway search inside a candidate and leaves the board intact", () => {
+  const b = stones("N15 F14 J13 O13 I12 N12 F11 J11 O11 M10 D9 H9 J9 M9 H8 B7 A6 H6 K6 L6 G5 L4 C3 B2 G2 H2 M2 C1 G1 I1",
+    "E15 J15 K15 M15 M14 A13 M13 H12 J12 G11 C10 G10 I10 J10 L10 N10 L9 N9 A8 O8 I7 B6 E6 G6 N6 C5 D5 I4 K2 L1");
+  const before = G.toRows(b).join("/");
+  const c = G.candidates(b, "X", "O", 12, 30, 500);
+  assert.equal(c.exhausted, false);
+  assert.ok(c.all.filter((x) => x.checked).length <= 2, "at most a couple of candidates fit in 500 evaluations");
+  assert.equal(G.toRows(b).join("/"), before);
+  assert.ok(G.analyzeMove(b, 7, 7, "X").cls); // the limit is disarmed afterwards
+});
+
+test("gomoku: allowing a double open three is a loss (Codex auditor position) and the state names forks as forks", () => {
+  // X A15, O B2, X F8, O C2, X G8, O N14, X H6, O N12, X H7: O to move; G7 lets X H8 make two open threes
+  const b = stones("A15 F8 G8 N14 H6 N12 H7".replace("N14 ", "").replace("N12 ", ""), "B2 C2 N14 N12");
+  const c = G.candidates(b, "O", "X");
+  const g7 = c.all.find((x) => x.key === "G7");
+  assert.equal(g7.checked, true);
+  assert.deepEqual(g7.danger, { by: "H8", cls: "double_three" }, g7.desc);
+  const plan = playerPlan(b, "O", "X");
+  assert.ok(plan.pool && plan.pool.some((x) => x.key === "H8"), "the fork point itself must be offered");
+  assert.ok(!plan.pool.some((x) => x.key === "G7"));
+  const fork = stones("L8 D3 E4", "I8 J8 K8 H9 H10"); // O H8 is a four plus an open three; O G8 a plain four
+  const { state } = buildPlayerRequest(fork, [], "X", "O", playerPlan(fork, "X", "O"));
+  assert.deepEqual(state.threats.O_wins_outright_at, ["H8"]);
+  assert.ok(state.threats.O_can_make_four_at.includes("G8") && !state.threats.O_can_make_four_at.includes("H8"));
+});
+
+test("gomoku: an opponent four-plus-three is not a loss when our forced block counters (Opus fix-the-fix position)", () => {
+  const rows = ["...............", "...............", "............X..", ".....O...X.....", "....X......X...", "......O....O...",
+    "...O.X.O.......", "......O..OO....", "............X..", ".........X.....", "..O.X...O.X....", "...............", "........OXX....", "...............", "..............."];
+  const b = G.parseBoard(rows);
+  const c = G.candidates(b, "X", "O");
+  const i7 = c.all.find((x) => x.key === "I7"); // X I7, O I8 (its four-plus-three), X H8 blocks and makes an open four: X wins
+  assert.equal(i7.checked, true);
+  assert.equal(i7.danger, null, i7.desc);
+  assert.ok(playerPlan(b, "X", "O").pool.some((x) => x.key === "I7"));
+});
+test("gomoku: when the budget cuts the search before a holding move is found, Jev gets the checked blocks and each says it loses", () => {
+  const pos = lostPos("D11", "C12", "E10", "D10", "J9", "I9");
+  const plan = playerPlan(pos, "O", "X", 12, 2500); // enough for the first few candidates, not for thirty
+  assert.equal(plan.forced, undefined);
+  assert.equal(plan.cands.exhausted, false);
+  assert.ok(plan.cands.all.filter((c) => c.checked).length >= 1);
+  assert.equal(plan.oppThreatens, true);
+  assert.ok(plan.pool.length >= 1 && plan.pool.every((c) => c.checked && /loses by force/.test(c.desc)), plan.pool.map((c) => c.desc).join(" | "));
+  assert.equal(plan.pool[0].key, "I9"); // the block of the biggest threat first
+});
+
 test("gomoku: a counter-four that holds keeps the move in the pool; a four that only delays does not", () => {
   // X has an open three F8-H8. O's E10 makes a four (A10 is X, so F10 is its only five point); X blocks F10 harmlessly
   // and O still holds with E8 or I8. Any other quiet move (J9) loses to X's open four at E8 or I8.

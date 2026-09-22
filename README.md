@@ -11,7 +11,9 @@ the hall of fame.
 Hosted on **Cloudflare Pages** (static page plus Pages Functions), records in **D1**, sign-in with
 Google.
 
-![The board on a laptop: the game switcher, this game's numbers, sign-in, and the empty Gomoku board](docs/img/home-laptop.png)
+![A replay of a human win at Gomoku on a laptop: the board with Jev's probabilities drawn on it, Jev's candidates, and the move table](docs/img/replay-laptop.png)
+
+*A replay of a human win: Jev's five most likely moves drawn on the board, its candidates beside it, and every move's who-decided, rank, latency and tokens.*
 
 ## Why a board game
 
@@ -34,7 +36,8 @@ code without a call (a five, an open four, a forced block, mate in one) and are 
   and when every move loses code plays the longest defence itself (the block of the biggest threat) and
   says so. Code plays forced wins and blocks, and hands Jev about twelve holding candidates, each
   annotated with what it creates and which opponent shape it blocks, plus a threat summary in the state.
-  The whole search is capped at a few milliseconds of CPU.
+  The search is a bound, not a proof: it tries the six strongest opponent threats per move under a fixed
+  evaluation budget (about five to nine milliseconds on a laptop), and says when the budget cut it short.
 - **Go 9×9**: captures, suicide, **positional superko**, area scoring (Chinese rules, komi 7.5),
   two-pass game end. For every legal point code computes what the move captures, saves, threatens
   (atari), connects, whether it is self-atari or fills an own eye, the line and the liberties left;
@@ -54,10 +57,11 @@ whether Jev's judgment agrees with, beats, or ignores the one-ply evaluation.
 
 ![Chess on a laptop with the Burnett piece set](docs/img/chess-laptop.png)
 
-The practice opponent (no key) plays the code's top-ranked candidate, and it is already hard to beat: in
-Player mode most of the playing strength is the harness, and Jev's share is the difference between the
-code's first choice and Jev's pick, which the page reports as the heuristic rank. To measure Jev alone,
-use the API-only modes below.
+The practice opponent (no key) picks from the same pool with a simple line-length heuristic and a little
+randomness, and it is already hard to beat: in Player mode most of the playing strength is the harness,
+which only ever offers holding moves. Jev's share is the difference between the code's first choice and
+Jev's pick, which the page reports as the heuristic rank. To measure Jev alone, use the API-only modes
+below.
 
 Two measurement modes remain in the API only (`mode` in the request body), not on the page:
 **Assisted** hands Jev every legal point with the same facts attached and verifies its win/block
