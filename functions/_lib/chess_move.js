@@ -44,15 +44,16 @@ export function buildChessFullRequest(c, moves, me, analyses, mode) {
 
 // player: code plays mate in one and single legal moves; otherwise Jev picks from the ranked pool.
 // The pool holds only moves that do not allow mate in one (chess.js marks a mating reply with # in its SAN, so
-// this is one move generation per candidate, not a search); up to `scan` moves are tried. When every one of
-// them allows mate, Jev still gets them, each saying so, and the note says so too.
-export function chessPlayerPlan(c, analyses, max = 12, scan = 24) {
+// this is one move generation per candidate, not a search). Moves are tried in rank order until `max` safe
+// ones are found, so a defence ranked last is still found. When every move allows mate, Jev still gets the
+// best-ranked ones, each saying so, and the note says so too.
+export function chessPlayerPlan(c, analyses, max = 12) {
   if (!analyses.length) return { forced: { move: null, source: "no-move", note: "no legal move" } };
   const mate = analyses.find((a) => a.mate);
   if (mate) return { forced: { move: mate.key, source: "forced-mate", note: null } };
   if (analyses.length === 1) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
   const safe = [], loses = [];
-  for (const a of analyses.slice(0, scan)) {
+  for (const a of analyses) {
     c.move(a.key);
     const mating = c.moves().find((san) => san.endsWith("#"));
     c.undo();
@@ -60,8 +61,8 @@ export function chessPlayerPlan(c, analyses, max = 12, scan = 24) {
     else if (safe.push(a) >= max) break;
   }
   const everyMoveLoses = !safe.length;
-  // Exactly one move stops the mate (and every other scanned move allows it): code plays it, like a forced block.
-  if (safe.length === 1 && loses.length && safe.length + loses.length === Math.min(scan, analyses.length))
+  // Exactly one move stops the mate and every other legal move allows it: code plays it, like a forced block.
+  if (safe.length === 1 && loses.length && safe.length + loses.length === analyses.length)
     return { forced: { move: safe[0].key, source: "only-move", note: `the only move that stops mate in one (${loses[0].allowsMate})` }, all: analyses };
   return { pool: (everyMoveLoses ? loses : safe).slice(0, max), all: analyses, note: everyMoveLoses ? "every candidate allows mate in one" : null };
 }

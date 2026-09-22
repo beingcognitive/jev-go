@@ -42,18 +42,21 @@ code without a call (a five, an open four, a forced block, mate in one) and are 
   two-pass game end. For every legal point code computes what the move captures, saves, threatens
   (atari), connects, whether it is self-atari (a capture that can be taken straight back, a snapback,
   counts) or fills an own eye, the line and the liberties left. Groups one move from atari are seen
-  too: a move that gives them a third liberty says so, and a short chase read checks every "saves
-  from atari" claim, so an escape into a ladder is called what it is. The state carries the count as
+  too: a move that gives them a third liberty says so, and a ladder read (legal moves only, ko
+  included, every defence tried) checks every "saves from atari" claim, so an escape into a working
+  ladder is called what it is. The state carries the count as
   it stands and every group short of liberties. Jev picks from the top twelve. `pass` can end the
-  game on the count, so it is offered only when Jev is ahead (after the opponent passed, or when
-  nothing scores), or near the 200-move cap, and the option says the score. Dead stones are not
+  game on the count: after the opponent passed it is offered only to a side that is ahead;
+  otherwise when nothing scores or every legal point is a self-atari (so a seki is kept), and near
+  the 200-move cap. The option says the score. Dead stones are not
   removed at the end, so capture them first.
 - **Chess**: rules from the vendored [chess.js](https://github.com/jhlywa/chess.js) 1.4.0
   (BSD-2-Clause, `functions/_lib/vendor/`); you are White unless you choose "New game, Jev opens". For every legal move code computes what
   it captures, whether the moved piece can be taken back (a static exchange over every attacker and
-  defender on the square; a piece pinned to its king neither attacks nor defends, and a pawn that can
-  be taken en passant counts), what it leaves en prise, what it threatens, check, mate, castling and
-  development, and ranks them; every legal move gets the same scan. Code plays mate in one. Jev picks
+  defender on the square; a piece pinned to its king cannot take there but still keeps the enemy king
+  off it, and a pawn that can legally be taken en passant counts), what it leaves en prise, what it
+  threatens, check, mate, castling and development, and ranks them. Every legal move gets the same
+  en-prise scan; threats are annotated for the leading sixteen. Code plays mate in one. Jev picks
   from the top twelve, and a move that allows mate in one is kept out of the pool whenever another
   move stops it (if exactly one does, code plays it). There is no deeper search. The pieces are Colin M.L. Burnett's SVG set
   ([CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), from

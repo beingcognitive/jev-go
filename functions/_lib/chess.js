@@ -138,6 +138,9 @@ function riskOn(c, square, val, me) {
   const att = bearing(c, square, otherColor(me));
   if (!att.values.length) return { risk: 0, attacker: null, defended: false };
   const def = bearing(c, square, me);
+  // A king may not step onto a guarded square, and a pinned piece still guards it: only the king attacks and some
+  // piece of ours bears on the square, pinned or not, so nothing can take there.
+  if (att.values.every((v) => v === 0) && c.attackers(square, me).length) return { risk: 0, attacker: null, defended: true };
   if (!def.values.length) return { risk: val, attacker: att.attacker ?? "k", defended: false };
   const risk = see(val, att.values, def.values);
   return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: true };
@@ -166,10 +169,17 @@ export function analyzeMove(c, m, deep = true) {
   const mate = c.isCheckmate();
   const stalemate = c.isStalemate();
   let self = mate ? { risk: 0, attacker: null } : riskOn(c, m.to, moverVal, me);
-  if (!mate && m.flags.includes("b")) { // a double pawn push: an enemy pawn beside it may take en passant, on the skipped square
-    const f = fileOf(m.to), r = rankOf(m.to), opp = otherColor(me);
-    const beside = [f - 1, f + 1].filter((x) => x >= 0 && x < 8).some((x) => { const q = c.get(sqAt(x, r)); return q && q.type === "p" && q.color === opp; });
-    if (beside) { const ep = riskOn(c, sqAt(f, (rankOf(m.from) + r) / 2), VALUE.p, me); if (ep.risk > self.risk) self = { ...ep, ep: true }; }
+  if (!mate && m.flags.includes("b")) { // a double pawn push: an enemy pawn beside it may take it en passant, landing on the skipped square
+    const skipped = sqAt(fileOf(m.to), (rankOf(m.from) + rankOf(m.to)) / 2), f = fileOf(m.to), r = rankOf(m.to), opp = otherColor(me);
+    // only an enemy pawn beside the pushed pawn can take it, and only if that is legal (a pinned pawn cannot)
+    const legal = [f - 1, f + 1].some((x) => { if (x < 0 || x > 7) return false; const sq = sqAt(x, r), q = c.get(sq);
+      return q && q.type === "p" && q.color === opp && c.moves({ square: sq, verbose: true }).some((y) => y.flags.includes("e") && y.to === skipped); });
+    if (legal) {
+      const att = bearing(c, skipped, opp).values, def = bearing(c, skipped, me).values;
+      const others = att.filter((v, i) => !(v === VALUE.p && i === att.indexOf(VALUE.p))); // the capturing pawn goes first, then the rest
+      const risk = !def.length ? VALUE.p : see(VALUE.p, [VALUE.p, ...others], def);
+      if (risk > self.risk) self = { risk, attacker: "p", defended: def.length > 0, ep: true };
+    }
   }
   const other = !deep || mate || stalemate ? { worst: 0, what: null } : worstHanging(c, me, m.to);
   c.undo();

@@ -13,7 +13,7 @@ const RULES =
   `then row number 1-9. Area scoring with komi ${Go.KOMI} for O. Positional superko. Two consecutive passes end the game.`;
 
 // Groups with one or two liberties: in atari, or one move from it.
-function groupsShort(board, color) {
+function groupsShort(board, color, history) {
   const out = [], seen = new Set();
   for (let r = 0; r < Go.SIZE; r++) for (let c = 0; c < Go.SIZE; c++) {
     if (board[r][c] !== color || seen.has(r * Go.SIZE + c)) continue;
@@ -21,7 +21,7 @@ function groupsShort(board, color) {
     for (const [a, b] of g.stones) seen.add(a * Go.SIZE + b);
     const n = g.liberties.size;
     if (n > 2) continue;
-    const caught = n === 2 && Go.chase(board, g.stones[0][0], g.stones[0][1], color, Go.other(color)) === "captured";
+    const caught = n === 2 && Go.chase(board, g.stones[0][0], g.stones[0][1], color, Go.other(color), history) === "captured";
     out.push(`${g.stones.length} stone${g.stones.length > 1 ? "s" : ""} at ${Go.key(...g.stones[0])} (${n === 1 ? "in atari" : caught ? "2 liberties; capturable in a chase if left" : "2 liberties"})`);
   }
   return out;
@@ -37,7 +37,7 @@ function baseState(st, moves, me, opp, hints = true) {
   if (hints) {
     const sc = Go.score(st.board);
     s.area_score_if_scored_now = { black: sc.black, white: sc.white, komi: Go.KOMI, leader: sc.winner === "X" ? "black" : "white", margin: sc.margin };
-    const mine = groupsShort(st.board, me), theirs = groupsShort(st.board, opp);
+    const mine = groupsShort(st.board, me, st.history), theirs = groupsShort(st.board, opp, st.history);
     if (mine.length) s[`${me}_groups_short_of_liberties`] = mine;
     if (theirs.length) s[`${opp}_groups_short_of_liberties`] = theirs;
   }
@@ -74,14 +74,16 @@ export function buildGoFullRequest(st, moves, me, opp, analyses, mode) {
   return { state: baseState(st, moves, me, opp, mode !== "naked"), questions, legal: new Set(Object.keys(criteria)) };
 }
 
-// player: code filters and ranks; Jev picks from the pool. Pass can end the game on the count as it stands, so it
-// is offered only when that count is a win: after the opponent's pass or when nothing scores; near the move cap
-// regardless. A single legal point is played without a call only when pass is not on offer.
+// player: code filters and ranks; Jev picks from the pool. After the opponent's pass, passing ends the game on the
+// count as it stands, so it is offered then only to a side that is ahead. Otherwise it is offered when nothing
+// scores or when every legal point is a self-atari or fills an own eye (a seki is kept by passing), and near
+// the move cap regardless. A single legal point is played without a call only when pass is not on offer.
 export function goPlayerPlan(st, me, opp, analyses, max = 12) {
   if (!analyses.length) return { forced: { move: "pass", source: "forced-pass", note: "no legal move" } };
   const pool = analyses.slice(0, max);
   const winning = Go.score(st.board).winner === me;
-  const includePass = (winning && (st.last === "pass" || pool[0].score <= 1)) || st.count >= Go.MAX_MOVES - 10;
+  const selfDestructive = analyses.every((a) => a.selfAtari || a.eyeFill);
+  const includePass = st.count >= Go.MAX_MOVES - 10 || (st.last === "pass" ? winning || selfDestructive : pool[0].score <= 1 || selfDestructive);
   if (analyses.length === 1 && !includePass) return { forced: { move: analyses[0].key, source: "only-move", note: "single legal move" } };
   if (analyses.length === 1 && analyses[0].score <= 0) return { forced: { move: "pass", source: "forced-pass", note: "only legal move is worse than passing" } };
   return { pool, includePass, all: analyses };

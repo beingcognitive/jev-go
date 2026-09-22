@@ -504,7 +504,8 @@ test("go: a group one move from atari is seen, rescued first, and every move tha
   assert.equal(an.filter((a) => /A1/.test(a.desc)).length, 0);
   const shortList = goState(st).O_groups_short_of_liberties;
   assert.ok(shortList.includes("1 stone at A1 (2 liberties; capturable in a chase if left)"), JSON.stringify(shortList));
-  assert.ok(shortList.some((x) => /^2 stones at [EF]5 \(2 liberties\)$/.test(x)), JSON.stringify(shortList)); // E5-F5 escapes if defended
+  // X G5 starts a ladder on E5-F5 that runs to the edge with no breaker: the read says so
+  assert.ok(shortList.includes("2 stones at E5 (2 liberties; capturable in a chase if left)"), JSON.stringify(shortList));
 });
 const goState = (st) => buildGoPlayerRequest(st, [], "O", "X", goPlayerPlan(st, "O", "X", Go.analyzeAll(st.board, "O", "X", st.history, st.last))).state;
 test("go: a ladder is not 'saved' and a snapback is a self-atari, however many stones it captures", () => {
@@ -646,8 +647,44 @@ test("chess: no pool move allows mate in one when a defence exists; a single def
   const one = fenGame("1nb3k1/ppp2p1p/7Q/8/8/8/PBP2PPP/6K1 b - - 0 1"); // only ...f6 stops Qg7#
   const forced = chessPlayerPlan(one, C.analyzeAll(one)).forced;
   assert.equal(forced.move, "f6"); assert.equal(forced.source, "only-move"); assert.match(forced.note, /only move that stops mate in one \(Qg7#\)/);
-  const lost = fenGame("6k1/5ppp/8/8/8/8/5PPP/r5K1 w - - 0 1"); // White is mated already? no: Black threatens nothing; use a real all-lose below
-  assert.ok(chessPlayerPlan(lost, C.analyzeAll(lost)));
+  const lost = fenGame("1nb3kN/ppp4p/7Q/8/8/8/PBP2PPP/6K1 b - - 0 1"); // fourteen legal moves, every one allows Qg7#
+  const lp = chessPlayerPlan(lost, C.analyzeAll(lost));
+  assert.equal(lp.forced, undefined); assert.equal(lp.pool.length, 12);
+  assert.ok(lp.pool.every((a) => /allows mate in one \(Qg7#\)/.test(a.desc)));
+  assert.equal(lp.note, "every candidate allows mate in one");
+});
+test("chess: the mate scan covers every legal move (second round, Codex)", () => {
+  const deep = fenGame("rrb3k1/2p2p1p/7Q/n7/1n6/nP6/PBP2PPP/6K1 b - - 0 1"); // thirty moves; only ...f6, ranked 28th, stops Qg7#
+  const f = chessPlayerPlan(deep, C.analyzeAll(deep)).forced;
+  assert.equal(f && f.move, "f6"); assert.equal(f.source, "only-move");
+  const many = fenGame("1nb3k1/ppp2p1p/7Q/8/8/1q6/PBP2PPP/6K1 b - - 0 1"); // Qxb2 and three more stop the mate: not a single defence
+  const p = chessPlayerPlan(many, C.analyzeAll(many));
+  assert.equal(p.forced, undefined); assert.ok(p.pool.length >= 4 && p.pool.some((a) => a.key === "Qxb2"), p.pool.map((a) => a.key).join(" "));
+  assert.ok(p.pool.every((a) => !a.allowsMate));
+});
+test("chess: a pinned piece still guards against the king; en passant only when it is legal (second round, Codex)", () => {
+  const guard = fenGame("5r2/8/4k3/3p4/2B2N2/8/8/5K2 w - - 0 1"); // after Bxd5+, Kxd5 is illegal: the pinned Nf4 still covers d5
+  const bx = C.analyzeAll(guard).find((a) => a.key === "Bxd5+");
+  assert.equal(bx.hangs, false, bx.desc); assert.ok(bx.gain >= 1);
+  const ep = fenGame("3k4/8/8/8/3p4/r7/4P3/3R3K w - - 0 1"); // the d4 pawn is pinned by Rd1: no en passant; the a3 rook cannot take on e3 "en passant"
+  const e4 = C.analyzeAll(ep).find((a) => a.key === "e4");
+  assert.equal(e4.hangs, false, e4.desc);
+});
+test("go: the ladder read is legal (ko), exhaustive for the defender, and a seki is kept by passing (second round, Codex)", () => {
+  const ko = goBoard({ G9: "X", J9: "X", H8: "X", J6: "X", J8: "O" });
+  const h9 = Go.analyzeMove(ko, ...gat("H9"), "O", "X", new Set([Go.hash(ko)]), null);
+  assert.equal(h9 && h9.saved, 0, h9 && h9.desc);
+  assert.doesNotMatch(h9.desc, /saves 1 O stone/);
+  const cc = goBoard({ A7: "X", B6: "X", C5: "X", D5: "X", B4: "X", D4: "X", A3: "X", B3: "X", C6: "O", B5: "O", E5: "O", A4: "O", C4: "O", D3: "O", E3: "O", C2: "O" });
+  assert.notEqual(Go.chase(cc, ...gat("C5"), "X", "O", new Set([Go.hash(cc)])), "captured"); // A5 captures two attackers
+  const rows = ["XXXXXXOOO", "XXXXX.OOO", "XXXXXXOOO", "XXXXXOOOO", "XXXXXOOOO", "XXXX.OOOO", "XXXXXOOOO", "XXXXXOOOO", "XXXXXOOOO"];
+  const board = rows.map((r) => r.split(""));
+  const st = { board, history: new Set([Go.hash(board)]), last: "J1", count: 160, captures: { X: 0, O: 0 } };
+  const an = Go.analyzeAll(board, "X", "O", st.history, st.last);
+  assert.ok(an.every((a) => a.selfAtari), an.map((a) => a.desc).join(" | "));
+  const plan = goPlayerPlan(st, "X", "O", an);
+  assert.equal(plan.includePass, true);
+  assert.ok(an.every((a) => a.score < 0), "a self-atari of a big group never scores as good");
 });
 test("chess: pinned pieces neither defend nor recapture; en passant is seen; development means leaving the home square", () => {
   const pin = fenGame("3k3b/8/3p4/8/8/5N2/8/3RK3 b - - 0 1"); // the d6 pawn is pinned by Rd1
