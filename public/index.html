@@ -808,8 +808,9 @@ function render(light){
   // aim + actions
   const aiming=!!S.aim&&S.status==="playing"&&!S.busy;
   $("aim").hidden=!aiming; $("place").hidden=!aiming; if(aiming){ $("aim").textContent=`${S.aim}. Tap again to place, or tap another point.`; $("place").textContent=`Place ${S.aim}`; }
-  $("pass").hidden=!cfg.pass||S.status!=="playing"; $("pass").disabled=locked;
-  $("actions").hidden=S.status!=="playing"||(!aiming&&!cfg.pass);
+  const passOn=cfg.pass&&S.status==="playing"&&S.turns.length>0; // no Pass before Jev has moved: passing an empty board is pointless
+  $("pass").hidden=!passOn; $("pass").disabled=locked;
+  $("actions").hidden=S.status!=="playing"||(!aiming&&!passOn);
   $("newgame").disabled=S.busy; $("newgamejev").disabled=S.busy; $("again").disabled=S.busy;
   renderResult();
   let sl="";
@@ -819,8 +820,8 @@ function render(light){
   const promoEl=$("promo"); promoEl.hidden=!(cfg.chess&&S.promo);
   if(cfg.chess&&S.promo){ const w=S.human==="X"; promoEl.innerHTML=`<span>Promote the pawn to</span>`+["q","r","b","n"].map(pz=>{ const m=S.promo.find(x=>x.promotion===pz); return m?`<button type="button" class="${w?"w":"b"}" data-san="${esc(m.san)}" title="${NAMEP[pz]}" aria-label="${NAMEP[pz]}">${pieceSvg(w?pz.toUpperCase():pz)}</button>`:""; }).join("");
     for(const b of promoEl.querySelectorAll("button")) b.addEventListener("click",()=>{ const m=S.promo.find(x=>x.san===b.dataset.san); S.promo=null; S.sel=null; if(m) play(m.san,m); }); }
-  if(S.game==="go"){ sl=`Captures: black ${S.captures.X}, white ${S.captures.O}`; if(S.score){ const s=S.score; sl+=`. Black ${s.black} vs white ${s.white} with komi ${s.komi}: ${s.winner==="X"?"black":"white"} by ${s.margin}.`; } }
-  $("scoreline").textContent=sl;
+  if(S.game==="go"&&(S.captures.X||S.captures.O||S.score)){ sl=`Captures: black ${S.captures.X}, white ${S.captures.O}`; if(S.score){ const s=S.score; sl+=`. Black ${s.black} vs white ${s.white} with komi ${s.komi}: ${s.winner==="X"?"black":"white"} by ${s.margin}.`; } }
+  $("scoreline").textContent=sl; $("scoreline").hidden=!sl||(!S.turns.length&&S.status!=="replay");
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-pressed",b.dataset.v===gameSel); } // picking a game during a replay leaves it
   renderJevCard(pickP);
   const bare=!S.turns.length&&S.status!=="replay"; // before Jev's first move only the board speaks
