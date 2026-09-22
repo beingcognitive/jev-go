@@ -127,10 +127,10 @@ export function score(board) {
   return { black, white, komi: KOMI, stones, territory: terr, winner: black > white ? "X" : "O", margin: Math.abs(black - white) };
 }
 
-// After a stone was placed at (r,c): the separate empty regions its empty neighbours now belong to, and how many of
-// them are bordered only by the stone's own group (an eye of that group; a region touching another of our groups
-// may be a false eye, as when that group can be captured through it).
-function splitInfo(board, r, c) {
+// After a stone was placed at (r,c): the separate empty regions its empty neighbours now belong to, and how many are
+// eyes: bordered only by the stone's own group, or a region where the opponent cannot legally play any point (a
+// region touching another of our groups that the opponent can enter, by capturing, is a false eye).
+function splitInfo(board, r, c, opp, history) {
   const own = new Set(group(board, r, c).stones.map(([a, b]) => a * SIZE + b));
   const seen = new Set();
   let regions = 0, eyes = 0;
@@ -138,16 +138,17 @@ function splitInfo(board, r, c) {
     if (board[x][y] !== "." || seen.has(x * SIZE + y)) continue;
     regions++;
     let mine = true;
-    const stack = [[x, y]]; seen.add(x * SIZE + y);
+    const stack = [[x, y]], pts = []; seen.add(x * SIZE + y);
     while (stack.length) {
       const [a, b] = stack.pop();
+      pts.push([a, b]);
       for (const [p, q] of N4(a, b)) {
         const j = p * SIZE + q;
         if (board[p][q] === ".") { if (!seen.has(j)) { seen.add(j); stack.push([p, q]); } }
         else if (!own.has(j)) mine = false;
       }
     }
-    if (mine) eyes++;
+    if (mine || (opp && pts.every(([a, b]) => tryMove(board, a, b, opp, history).error))) eyes++;
   }
   return { regions, eyes };
 }
@@ -272,7 +273,7 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   // Inside our own eye space (the empty region holding (r,c) borders only our stones, nothing captured): does the
   // move divide it into two or more eyes, or only fill it? A straight three is alive with its middle point played.
   const ownEye = !t.captured && oppNeighbors === 0 && regionOwner(board, r, c) === me;
-  const split = ownEye ? splitInfo(after, r, c) : { regions: 0, eyes: 0 };
+  const split = ownEye ? splitInfo(after, r, c, opp, histAfter) : { regions: 0, eyes: 0 };
   const line = Math.min(r, c, SIZE - 1 - r, SIZE - 1 - c) + 1;
   const lp = lastKey ? fromKey(lastKey) : null;
   const nearLast = !!(lp && Math.max(Math.abs(lp.r - r), Math.abs(lp.c - c)) <= 1);
@@ -290,7 +291,7 @@ export function analyzeMove(board, r, c, me, opp, history, lastKey) {
   if (connects) parts.push(`connects ${connects} ${me} groups`);
   if (selfAtari) parts.push(`self-atari (${own.stones.length} stone${own.stones.length > 1 ? "s" : ""} left with one liberty${t.captured ? ", so the capture can be taken straight back" : ""})`);
   if (eyeFill) parts.push(`fills own eye`);
-  else if (ownEye) parts.push(split.eyes >= 2 ? `divides own eye space into ${split.eyes} eyes of this group` : split.regions >= 2 ? `separates own eye space into ${split.regions} regions (not all of them eyes of this group)` : `fills own eye space`);
+  else if (ownEye) parts.push(split.eyes >= 2 ? `divides own eye space into ${split.eyes} eyes` : split.regions >= 2 ? `separates own eye space into ${split.regions} regions (not all of them sure eyes)` : `fills own eye space`);
   parts.push(`${ordinal(line)} line`);
   parts.push(`${libsAfter} libert${libsAfter === 1 ? "y" : "ies"} after`);
   if (oppNeighbors) parts.push(`touches ${oppNeighbors} ${opp} stone${oppNeighbors > 1 ? "s" : ""}`);

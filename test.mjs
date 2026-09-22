@@ -705,7 +705,7 @@ test("fourth review round (Fable): own eye space keeps pass on offer; a pin rele
   const rows = ["XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXX...XXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX", "XXXXXXXXX"];
   const board = rows.map((x) => x.split(""));
   const an = Go.analyzeAll(board, "X", "O", new Set([Go.hash(board)]), null);
-  assert.equal(an[0].key, "E5"); assert.match(an[0].desc, /divides own eye space into 2 eyes of this group/);
+  assert.equal(an[0].key, "E5"); assert.match(an[0].desc, /divides own eye space into 2 eyes/);
   assert.match(an.find((x) => x.key === "D5").desc, /fills own eye space/);
   // pass is not offered in place of the eye-making move (fifth round, Codex: legal replay position, X to move)
   const r2 = ["XXXXXOOOO", "XXXXXOOOO", "XXXXXOO.O", "XXXXXOOOO", "X...XOOOO", "XXXXXOOOO", "XXXXXOO.O", "XXXXXOOOO", "XXXXXOOOO"].map((x) => x.split(""));
@@ -733,6 +733,16 @@ test("sixth review round (Codex): a pin is released only by a sole capturer; fal
   const rows = ["OOOOOOOOO", "O.OOO.OOO", "OOOOOOOOO", "OOOXXXOOO", "OOX...XOO", "OOOXXXOOO", "OOOOOOOOO", "O.OOO.OOO", "OOOOOOOOO"].map((x) => x.split(""));
   const e5 = Go.analyzeAll(rows, "X", "O", new Set([Go.hash(rows)]), null).find((a) => a.key === "E5");
   assert.doesNotMatch(e5.desc, /2 eyes/); assert.match(e5.desc, /separates own eye space into 2 regions/);
+});
+test("seventh review round (Codex): an illegal king capture is no capturer; an eye the opponent cannot enter counts", () => {
+  const k = fenGame("8/8/8/8/2k1q3/4R3/P3KN2/8 w - - 0 1"); // Nd3: only Qxd3+ is legal, then Rxd3
+  const nd3 = C.analyzeAll(k).find((a) => a.key === "Nd3");
+  assert.equal(nd3.hangs, false, nd3.desc); assert.equal(nd3.gain, 0);
+  const rows = ["OOX...XX.", ".OXXXXOXX", "O.OOOOOX.", "OOOOOOOXX", "XXXXXXXXX", "XX..XXXXX", "XX..XXXXX", "XXXXXX.XX", "XXXXXXXXX"].map((x) => x.split(""));
+  const an = Go.analyzeAll(rows, "X", "O", new Set([Go.hash(rows)]), null);
+  const e9 = an.find((a) => a.key === "E9");
+  assert.match(e9.desc, /divides own eye space into 2 eyes/);
+  for (const f of ["C4", "D4", "C3", "D3"]) assert.ok(an.indexOf(e9) < an.findIndex((a) => a.key === f), f);
 });
 
 test("chess: the fast mate test agrees with the slow one", () => {

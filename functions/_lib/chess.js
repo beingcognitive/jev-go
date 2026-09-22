@@ -147,7 +147,10 @@ function riskOn(c, square, val, me) {
   // A defender is freed from its pin only when its pinner is the sole capturer (that capture releases it). With
   // several capturers the pinned defender is left out: the others may take first while it is still pinned, so the
   // read errs toward reporting a loss rather than hiding one.
-  const def = bearing(c, square, me, att.squares.length === 1 ? att.squares : null);
+  // (a king is no capturer where any piece of ours, pinned or not, guards the square)
+  const guarded = c.attackers(square, me).length > 0;
+  const capturers = att.squares.filter((sq) => !(guarded && c.get(sq).type === "k"));
+  const def = bearing(c, square, me, capturers.length === 1 ? capturers : null);
   if (!def.values.length && !def.guards) return { risk: val, attacker: att.attacker ?? "k", defended: false };
   const risk = see(val, att.values, def.values, att.guards, def.guards);
   return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: def.values.length > 0 }; // a pinned guard cannot recapture
