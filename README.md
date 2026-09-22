@@ -27,9 +27,14 @@ Every move is one call. Code builds the position and a ranked, annotated pool of
 answers one `choice` question over the pool and the page plays its pick. Forced tactics are played by
 code without a call (a five, an open four, a forced block, mate in one) and are logged as such.
 
-- **Gomoku 15×15**: code sees fives, open/closed/split fours, open threes, forks and "this move loses
-  next turn"; it plays forced wins and blocks itself and hands Jev about twelve candidates, each
-  annotated with exactly what it creates and blocks, plus a threat summary in the state.
+- **Gomoku 15×15**: code sees fives, open/closed/split fours, open threes and forks, and runs a bounded
+  forcing search for every candidate: does the opponent win by force after it, through an unstoppable
+  threat at once, a four or an open three that no reply holds, or the block of our own four? Moves that
+  lose by force are dropped, a four is kept only when the position after its forced block still holds,
+  and when every move loses code plays the longest defence itself (the block of the biggest threat) and
+  says so. Code plays forced wins and blocks, and hands Jev about twelve holding candidates, each
+  annotated with what it creates and which opponent shape it blocks, plus a threat summary in the state.
+  The whole search is capped at a few milliseconds of CPU.
 - **Go 9×9**: captures, suicide, **positional superko**, area scoring (Chinese rules, komi 7.5),
   two-pass game end. For every legal point code computes what the move captures, saves, threatens
   (atari), connects, whether it is self-atari or fills an own eye, the line and the liberties left;
@@ -48,6 +53,11 @@ The page shows where Jev's pick ranked in the code's ordering ("heuristic #k"), 
 whether Jev's judgment agrees with, beats, or ignores the one-ply evaluation.
 
 ![Chess on a laptop with the Burnett piece set](docs/img/chess-laptop.png)
+
+The practice opponent (no key) plays the code's top-ranked candidate, and it is already hard to beat: in
+Player mode most of the playing strength is the harness, and Jev's share is the difference between the
+code's first choice and Jev's pick, which the page reports as the heuristic rank. To measure Jev alone,
+use the API-only modes below.
 
 Two measurement modes remain in the API only (`mode` in the request body), not on the page:
 **Assisted** hands Jev every legal point with the same facts attached and verifies its win/block

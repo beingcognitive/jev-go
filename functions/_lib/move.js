@@ -59,7 +59,7 @@ function threatSummary(cands, me, opp) {
 }
 
 // player: code decides forced tactics; otherwise a ranked candidate pool for Jev.
-// Candidates that leave the opponent an unstoppable threat are dropped unless they are a safe forcing move.
+// Candidates that lose by force are dropped; when every checked move loses, code plays the longest defence.
 export function playerPlan(board, me, opp, max = 12) {
   const winPts = G.fivePointsFor(board, me);
   if (winPts.length) return { forced: { move: winPts[0], source: "forced-win", note: null } };
@@ -69,9 +69,13 @@ export function playerPlan(board, me, opp, max = 12) {
   const cands = G.candidates(board, me, opp, max);
   const of = cands.all.find((c) => c.me.cls === "open_four");
   if (of) return { forced: { move: of.key, source: "open-four", note: null }, cands };
-  const safe = cands.all.filter((c) => !c.danger || c.forcing);
-  const pool = (safe.length ? safe : cands.all).slice(0, max);
-  return { pool, cands, oppThreatens: safe.length < cands.all.length };
+  const checked = cands.all.filter((c) => c.checked);
+  const safe = checked.filter((c) => !c.danger);
+  if (safe.length) return { pool: safe.slice(0, max), cands, oppThreatens: safe.length < checked.length };
+  // Every checked move loses by force: blocks of the biggest threat first, to make the opponent prove the win.
+  const blocks = [...checked].sort((x, y) => G.VALUE[y.opp.cls] - G.VALUE[x.opp.cls] || y.score - x.score);
+  if (cands.exhausted) return { forced: { move: blocks[0].key, source: "longest-defence", note: `every move loses by force; ${blocks[0].desc}` }, cands, lost: true };
+  return { pool: blocks.slice(0, max), cands, oppThreatens: true }; // the search ran out of CPU before the ranking: Jev picks among the blocks
 }
 
 export function buildPlayerRequest(board, moves, me, opp, plan) {

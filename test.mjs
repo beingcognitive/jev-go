@@ -79,10 +79,65 @@ test("gomoku: assisted descriptions carry exact line facts", () => {
 test("gomoku: candidates flag danger and safe forcing correctly", () => {
   const b = boardWith({ G8: "X", H8: "X", I8: "X", H9: "O", I7: "O" });
   const c = G.candidates(b, "O", "X", 12);
-  assert.equal(c.all.find((x) => x.key === "E8").danger, true);
-  assert.equal(c.all.find((x) => x.key === "F8").danger, false);
+  assert.deepEqual(c.all.find((x) => x.key === "E8").danger, { by: "J8", cls: "open_four" });
+  assert.equal(c.all.find((x) => x.key === "F8").danger, null);
   assert.ok(c.all.filter((x) => x.danger).length > 10);
-  assert.match(c.all.find((x) => x.key === "F8").desc, /blocks X from making an open four/);
+  assert.match(c.all.find((x) => x.key === "F8").desc, /blocks X's open three \(horizontal\): X would make an open four here/);
+  assert.match(c.all.find((x) => x.key === "E8").desc, /loses by force: X answers at J8 \(an open four\)/);
+});
+
+// The game Jev lost on 2026-09-21: three positions with O (Jev) to move. After X's J9 (pos2) O is lost by force:
+// every block leaves X K8 (a four plus an open three), and the fours E10/D10 only delay. The old filter dropped every
+// block as "loses next turn" and handed Jev only the two fours because an unresolved search counted as safe.
+const LOST_GAME = ["...............", "...............", "...............", "..X............", "...O...........", "...XOOOOX......",
+  ".....OXXOXO....", "......OXXX.....", ".......XXXO....", ".......X.OX....", "......XO...O...", ".....O.........", "...............", "...............", "..............."];
+const lostPos = (...remove) => { const b = G.parseBoard(LOST_GAME); for (const k of remove) { const p = G.fromKey(k); b[p.r][p.c] = "."; } return b; };
+test("gomoku: a lost position is played out by code with the block of the biggest threat, never a pointless four", () => {
+  for (const pos of [lostPos(), lostPos("D11", "C12", "E10", "D10")]) {
+    const plan = playerPlan(pos, "O", "X");
+    assert.equal(plan.forced?.source, "longest-defence", JSON.stringify(plan.forced || plan.pool?.map((c) => c.key)));
+    assert.ok(["G6", "K10"].includes(plan.forced.move), plan.forced.move);
+    assert.match(plan.forced.note, /every move loses by force; .*blocks X's open three \(anti-diagonal\).*X answers at K8 \(a four plus an open three\)/);
+    const e10 = plan.cands.all.find((c) => c.key === "E10");
+    if (!e10) continue; // already played in the final position
+    assert.equal(e10.checked, true); assert.deepEqual(e10.danger, { by: "D10", cls: "block" });
+    assert.match(e10.desc, /loses by force after X blocks at D10/);
+  }
+});
+test("gomoku: the move before was already lost: I9 blocks the open three but X's J9 then wins, and a four does not escape", () => {
+  const plan = playerPlan(lostPos("D11", "C12", "E10", "D10", "J9", "I9"), "O", "X");
+  assert.equal(plan.forced?.source, "longest-defence");
+  assert.equal(plan.forced.move, "I9");
+  assert.match(plan.forced.note, /X answers at J9 \(an open three\)/);
+  assert.deepEqual(plan.cands.all.find((c) => c.key === "E10").danger, { by: "D10", cls: "block" });
+});
+test("gomoku: the danger search stays within the CPU budget and says when it did not finish", () => {
+  const pos = lostPos("D11", "C12", "E10", "D10", "J9", "I9");
+  G.candidates(pos, "O", "X"); // warm
+  const t0 = performance.now(); const c = G.candidates(pos, "O", "X"); const ms = performance.now() - t0;
+  assert.ok(ms < 60, `candidates took ${ms.toFixed(1)} ms`);
+  assert.equal(c.exhausted, true); // the default budget covers this, the heaviest position we have
+  const cut = G.candidates(pos, "O", "X", 12, 30, 0);
+  assert.equal(cut.exhausted, false);
+  assert.equal(cut.all.filter((x) => x.checked).length, 0);
+  const plan = playerPlan(pos, "O", "X");
+  assert.equal(plan.forced.source, "longest-defence");
+});
+test("gomoku: a counter-four that holds keeps the move in the pool; a four that only delays does not", () => {
+  // X has an open three F8-H8. O's E10 makes a four (A10 is X, so F10 is its only five point); X blocks F10 harmlessly
+  // and O still holds with E8 or I8. Any other quiet move (J9) loses to X's open four at E8 or I8.
+  const b = boardWith({ F8: "X", G8: "X", H8: "X", A10: "X", B10: "O", C10: "O", D10: "O", N1: "X", M1: "O", A15: "X" });
+  const c = G.candidates(b, "O", "X");
+  const e10 = c.all.find((x) => x.key === "E10");
+  assert.equal(e10.checked, true);
+  assert.equal(e10.me.cls, "four");
+  assert.equal(e10.danger, null, e10.desc);
+  assert.equal(c.all.find((x) => x.key === "E8").danger, null);
+  assert.equal(c.all.find((x) => x.key === "I8").danger, null);
+  const d8 = c.all.find((x) => x.key === "D8"); // blocks only X's closed four point; X then has I8 for an open four
+  assert.equal(d8.checked, true);
+  assert.deepEqual(d8.danger, { by: "I8", cls: "open_four" }, d8.desc);
+  assert.equal(c.all.find((x) => x.key === "J9").checked, false); // the search stops once twelve holding moves are found
 });
 
 test("gomoku: playerPlan forced win / block / open four", () => {

@@ -140,8 +140,11 @@ export function classify(counts) {
   return "none";
 }
 
+// Work counter for the danger search's budget: one unit per point evaluated (wall-clock time is frozen on Workers).
+let work = 0;
 // What `color` would create by playing (r,c). Board is restored afterwards.
 export function analyzeMove(board, r, c, color) {
+  work++;
   board[r][c] = color;
   const dirs = DIRS.map(([dr, dc], i) => ({ name: DIR_NAMES[i], threat: dirThreat(board, r, c, color, dr, dc) }));
   board[r][c] = ".";
@@ -212,6 +215,52 @@ export function unstoppableAfter(board, r, c, me, opp, pts) {
   return hit;
 }
 const FORCING = new Set(["five", "open_four", "double_four", "four_three", "four"]);
+// Opponent moves that have to be answered: fours and above, and open threes (a fork of threes wins unless we hold fours).
+const THREAT = new Set([...FORCING, "open_three", "double_three"]);
+const classAt = (board, p, color) => analyzeMove(board, p.r, p.c, color).cls;
+// Forcing class of `color` at p: five, open_four, double_four, four_three, four, or none. Cheap: the open-three scan
+// runs only next to a single four, where it decides four_three. Open threes alone are not this function's business.
+function quickClass(board, p, color) {
+  work++;
+  const { r, c } = p;
+  board[r][c] = color;
+  let fours = 0, fourDir = -1, out = "none";
+  for (let i = 0; i < 4 && out === "none"; i++) {
+    const [dr, dc] = DIRS[i];
+    if (lineLenDir(board, r, c, color, dr, dc) >= 5) out = "five";
+    else {
+      const n = fivePointsDir(board, r, c, color, dr, dc).length;
+      if (n >= 2) out = "open_four"; else if (n === 1) { fours++; fourDir = i; }
+    }
+  }
+  if (out === "none" && fours >= 2) out = "double_four";
+  else if (out === "none" && fours === 1) {
+    out = "four";
+    for (let i = 0; i < 4; i++) if (i !== fourDir && dirThreat(board, r, c, color, DIRS[i][0], DIRS[i][1]) === "open_three") { out = "four_three"; break; }
+  }
+  board[r][c] = ".";
+  return out;
+}
+// Empties on the four lines through (r,c) where `color` completes five: the five points a stone at (r,c) creates.
+function fivesThrough(board, r, c, color) {
+  const out = [];
+  for (const [dr, dc] of DIRS) for (let k = -4; k <= 4; k++) {
+    if (!k) continue;
+    const rr = r + k * dr, cc = c + k * dc;
+    if (inBounds(rr, cc) && board[rr][cc] === "." && makesFive(board, rr, cc, color)) out.push({ r: rr, c: cc, key: key(rr, cc) });
+  }
+  return out;
+}
+// Empties on the four lines through (r,c), within four: the only places a stone at (r,c) can create a new threat.
+function linePoints(board, r, c) {
+  const out = [];
+  for (const [dr, dc] of DIRS) for (let k = -4; k <= 4; k++) {
+    if (!k) continue;
+    const rr = r + k * dr, cc = c + k * dc;
+    if (inBounds(rr, cc) && board[rr][cc] === ".") out.push({ r: rr, c: cc, key: key(rr, cc) });
+  }
+  return out;
+}
 // Bounded forcing search: who wins if both sides only play fives, forced blocks and unstoppable threats?
 // Returns "X" | "O" for a proven winner, null when unresolved within `depth`.
 function forcingWinner(board, turn, depth = 6) {
@@ -231,11 +280,112 @@ function forcingWinner(board, turn, depth = 6) {
   }
   return null;
 }
-// A forcing move is only a real answer to a threat if the opponent cannot win the forced sequence it starts
-// (the reply may block and counter with a four of its own, so a one-ply look is not enough).
-function forcingIsSafe(board, r, c, me, opp) {
+const empties = (board, pts) => pts.filter((p) => board[p.r][p.c] === ".");
+const union = (a, b) => { const seen = new Set(a.map((p) => p.key)); return a.concat(b.filter((p) => !seen.has(p.key))); };
+// `me` to move against `opp`'s threats. `oppPts` ⊇ opp's threat points and `myPts` ⊇ our forcing points (both are
+// re-checked; a stone only creates threats on the lines through it, so the sets grow by linePoints of each stone placed).
+// Returns the key of a reply after which `opp` has no unstoppable threat and no four that leads to one (a block, or a
+// counter-four followed by a block), "-" when there is nothing to answer, and null when every reply loses.
+export function holdKey(board, me, opp, depth = 1, oppPts = nearPoints(board), myPts = oppPts) {
+  const oppCls = empties(board, oppPts).map((p) => ({ p, cls: quickClass(board, p, opp) }));
+  const myCls = empties(board, myPts).map((p) => ({ p, cls: quickClass(board, p, me) }));
+  const win = myCls.find((x) => x.cls === "five");
+  if (win) return win.p.key;
+  const fives = oppCls.filter((x) => x.cls === "five").map((x) => x.p);
+  if (fives.length >= 2) return null;
+  const oppU = oppCls.filter((x) => UNSTOPPABLE.has(x.cls)).map((x) => x.p);
+  const oppF = oppCls.filter((x) => FORCING.has(x.cls)).map((x) => x.p);
+  if (!fives.length && !oppU.length) return "-";
+  const myF = myCls.filter((x) => FORCING.has(x.cls)).map((x) => x.p);
+  const replies = fives.length ? fives : union(oppF, myF);
+  const oppStill = (pts) => empties(board, pts).some((t) => UNSTOPPABLE.has(quickClass(board, t, opp)));
+  for (const q of replies) {
+    board[q.r][q.c] = me;
+    let ok = false;
+    try {
+      if (isWinAt(board, q.r, q.c)) return q.key;
+      const myFives = fivesThrough(board, q.r, q.c, me);
+      if (myFives.length >= 2) ok = true;
+      else if (myFives.length === 1) {
+        // a counter-four: opp must block, then we look again
+        if (depth > 0) {
+          const b = myFives[0];
+          board[b.r][b.c] = opp;
+          try {
+            ok = !isWinAt(board, b.r, b.c) &&
+              holdKey(board, me, opp, depth - 1, union(oppPts, linePoints(board, b.r, b.c)), union(myPts, linePoints(board, q.r, q.c))) !== null;
+          } finally { board[b.r][b.c] = "."; }
+        }
+      } else {
+        ok = !oppStill(oppU);
+        // a plain four first: we block, then opp may have an unstoppable threat, also on the lines through its four
+        if (ok && depth > 0) for (const f of oppF) {
+          if (board[f.r][f.c] !== "." || !FORCING.has(quickClass(board, f, opp))) continue;
+          board[f.r][f.c] = opp;
+          try {
+            const bl = fivesThrough(board, f.r, f.c, opp);
+            if (bl.length >= 2) ok = false;
+            else if (bl.length === 1) {
+              board[bl[0].r][bl[0].c] = me;
+              try {
+                if (!fivesThrough(board, bl[0].r, bl[0].c, me).length && oppStill(union(oppU, linePoints(board, f.r, f.c)))) ok = false;
+              } finally { board[bl[0].r][bl[0].c] = "."; }
+            }
+          } finally { board[f.r][f.c] = "."; }
+          if (!ok) break;
+        }
+      }
+    } finally { board[q.r][q.c] = "."; }
+    if (ok) return q.key;
+  }
+  return null;
+}
+// Does `me` playing p lose by force? Returns {by, cls}: the opponent move that wins (an unstoppable threat at once,
+// or a four / open three after which no reply holds), or the forced block of our own four when the position after
+// the exchange has no holding move (`depth` bounds consecutive own fours; an unproven one counts as lost).
+// null when the move holds.
+export function dangerOf(board, p, me, opp, depth = 1, oppPts = nearPoints(board), myPts = oppPts) {
+  board[p.r][p.c] = me;
+  try {
+    if (isWinAt(board, p.r, p.c)) return null;
+    const myFives = fivesThrough(board, p.r, p.c, me);
+    if (myFives.length >= 2) return null;
+    const myNext = union(myPts, linePoints(board, p.r, p.c));
+    if (myFives.length === 1) {
+      const b = myFives[0];
+      if (depth <= 0) return { by: b.key, cls: "block" };
+      board[b.r][b.c] = opp;
+      try {
+        if (isWinAt(board, b.r, b.c)) return { by: b.key, cls: "block" };
+        return anyHold(board, me, opp, depth - 1, union(oppPts, linePoints(board, b.r, b.c)), myNext) ? null : { by: b.key, cls: "block" };
+      } finally { board[b.r][b.c] = "."; }
+    }
+    const open = empties(board, oppPts);
+    for (const t of open) { const cls = quickClass(board, t, opp); if (UNSTOPPABLE.has(cls)) return { by: t.key, cls }; }
+    const ts = open.map((t) => ({ t, cls: classAt(board, t, opp) })).filter((x) => THREAT.has(x.cls));
+    ts.sort((x, y) => VALUE[y.cls] - VALUE[x.cls]);
+    let n = 0;
+    for (const { t, cls } of ts) {
+      if (n++ >= 6) break;
+      board[t.r][t.c] = opp;
+      try { if (holdKey(board, me, opp, 1, union(oppPts, linePoints(board, t.r, t.c)), myNext) === null) return { by: t.key, cls }; }
+      finally { board[t.r][t.c] = "."; }
+    }
+    return null;
+  } finally { board[p.r][p.c] = "."; }
+}
+// `me` to move: is there a move that does not lose by force? Tried: the opponent's threat points (highest first) and our fours.
+function anyHold(board, me, opp, depth, oppPts, myPts) {
+  const oppT = empties(board, oppPts).map((t) => ({ t, cls: classAt(board, t, opp) })).filter((x) => THREAT.has(x.cls));
+  if (!oppT.length) return true;
+  oppT.sort((x, y) => VALUE[y.cls] - VALUE[x.cls]);
+  const myF = empties(board, myPts).filter((q) => FORCING.has(quickClass(board, q, me)));
+  return union(oppT.slice(0, 6).map((x) => x.t), myF).some((q) => dangerOf(board, q, me, opp, depth, oppPts, myPts) === null);
+}
+// A forcing move that wins by force: the opponent can only block, and the blocks run out.
+function winsByForce(board, r, c, me, opp) {
   board[r][c] = me;
-  try { return isWinAt(board, r, c) || forcingWinner(board, opp) !== opp; } finally { board[r][c] = "."; }
+  try { return isWinAt(board, r, c) || forcingWinner(board, opp) === me; } finally { board[r][c] = "."; }
 }
 
 function dirNames(a, classes) {
@@ -248,33 +398,55 @@ function contributing(cls) {
   if (cls === "double_three") return ["open_three"];
   return [cls];
 }
+// What the opponent already has on the line when our stone stops it from making `cls` there.
+const BLOCKS = {
+  five: "four", open_four: "open three", four: "three", four_three: "four-plus-three point", double_four: "double-four point",
+  double_three: "fork of two open threes", open_three: "open two", three: "two",
+};
 export function describeCandidate(cand, me, opp) {
   const parts = [];
+  if (cand.wins) parts.push(`${me} wins by force`);
   if (cand.me.cls !== "none") parts.push(`${me} makes ${LABEL[cand.me.cls]}${dirNames(cand.me, contributing(cand.me.cls))}`);
-  if (VALUE[cand.opp.cls] >= VALUE.three) parts.push(`blocks ${opp} from making ${LABEL[cand.opp.cls]}${dirNames(cand.opp, contributing(cand.opp.cls))}`);
-  if (!parts.length) parts.push(cand.adj ? "quiet move next to stones" : "quiet move away from the stones");
-  if (cand.danger && !cand.forcing) parts.push(`leaves ${opp} an unstoppable threat`);
+  if (VALUE[cand.opp.cls] >= VALUE.three)
+    parts.push(`blocks ${opp}'s ${BLOCKS[cand.opp.cls]}${dirNames(cand.opp, contributing(cand.opp.cls))}: ${opp} would make ${LABEL[cand.opp.cls]} here`);
+  if (!parts.length) parts.push(cand.adj ? `quiet move next to ${cand.adjMe} ${me} and ${cand.adjOpp} ${opp} stones` : "quiet move away from the stones");
+  if (cand.danger) parts.push(cand.danger.cls === "block" ? `loses by force after ${opp} blocks at ${cand.danger.by}` : `loses by force: ${opp} answers at ${cand.danger.by} (${LABEL[cand.danger.cls]})`);
   return parts.join("; ");
 }
 
-// Ranked candidate list for `me`. Each entry: {key, r, c, me, opp, danger, forcing, score, desc}.
-export function candidates(board, me, opp, max = 12) {
+// Ranked candidate list for `me`. Each entry: {key, r, c, me, opp, adj, score, wins, danger, checked, desc}.
+// The danger search runs down the ranking until `max` holding moves are found, `probe` moves were checked, or
+// `budget` point evaluations are spent (about 2.5 µs each on a laptop; the lost-game positions need about 2,500);
+// `exhausted` says whether the ranking was searched to the probe limit rather than cut by the budget.
+export function candidates(board, me, opp, max = 12, probe = 30, budget = 4000) {
+  work = 0;
   const near = nearPoints(board, 2);
   const analyzed = near.map((p) => ({ p, a: analyzeMove(board, p.r, p.c, me), b: analyzeMove(board, p.r, p.c, opp) }));
-  // Adding a `me` stone can only remove `opp` options, so the opponent's threats after any of our
-  // moves are a subset of its threats now. Re-test only those points.
-  const oppThreats = analyzed.filter(({ b }) => UNSTOPPABLE.has(b.cls)).map(({ p }) => p);
+  const oppT = analyzed.filter(({ b }) => THREAT.has(b.cls)).map(({ p }) => p);
+  const myF = analyzed.filter(({ a }) => FORCING.has(a.cls)).map(({ p }) => p);
   const all = analyzed.map(({ p, a, b }) => {
-    const danger = unstoppableAfter(board, p.r, p.c, me, opp, oppThreats);
-    const forcing = FORCING.has(a.cls) && (!danger || forcingIsSafe(board, p.r, p.c, me, opp));
-    const adj = adjacency(board, p.r, p.c);
+    let adjMe = 0, adjOpp = 0;
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const rr = p.r + dr, cc = p.c + dc;
+      if ((dr || dc) && inBounds(rr, cc)) { if (board[rr][cc] === me) adjMe++; else if (board[rr][cc] === opp) adjOpp++; }
+    }
+    const adj = adjMe + adjOpp;
     const score = VALUE[a.cls] + 0.9 * VALUE[b.cls] + adj * 3;
-    const cand = { ...p, me: a, opp: b, danger, forcing, adj, score };
-    cand.desc = describeCandidate(cand, me, opp);
-    return cand;
+    return { ...p, me: a, opp: b, adj, adjMe, adjOpp, score, wins: false, danger: null, checked: false, desc: "" };
   });
   all.sort((x, y) => y.score - x.score);
-  return { near, all, top: all.slice(0, max) };
+  let safe = 0, checked = 0, exhausted = true;
+  for (const c of all) {
+    if (safe >= max || checked >= probe) break;
+    if (work > budget) { exhausted = false; break; }
+    c.checked = true; checked++;
+    c.wins = FORCING.has(c.me.cls) && winsByForce(board, c.r, c.c, me, opp);
+    c.danger = c.wins ? null : dangerOf(board, c, me, opp, 1, oppT, myF);
+    if (!c.danger) safe++;
+  }
+  for (const c of all) c.desc = describeCandidate(c, me, opp);
+  all.sort((x, y) => (y.wins - x.wins) || (y.score - x.score));
+  return { near, all, top: all.slice(0, max), exhausted };
 }
 
 // Assisted-mode description for any empty point (all points, not just candidates).
