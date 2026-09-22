@@ -939,8 +939,9 @@ async function loadLeaderboard(fresh){
     const st=d.stats;
     $("lbstats").innerHTML=stat(st.games,"recorded games")+stat(st.jev_wins,"Jev wins")+stat(st.human_wins,"human wins")+stat(st.games?Math.round(100*st.human_wins/st.games)+"%":"–","humans win");
     if(!d.wins.length){ $("lb").innerHTML=`<span class="na">Nobody has beaten Jev at this game yet${d.durable?"":" (records on this server are in memory only)"}.</span>`; return; }
-    $("lb").innerHTML=`<table class="lb"><thead><tr><th>#</th><th>Name</th><th>Plies</th><th>Mode</th><th>Jev</th><th>When</th><th></th></tr></thead><tbody>`+
-      d.wins.map((w,i)=>`<tr><td>${i+1}</td><td>${esc(w.name)}</td><td>${w.plies}</td><td>${esc(w.mode)}</td><td>${esc(w.model||"")}</td><td>${w.ended_at?new Date(w.ended_at).toLocaleDateString():""}</td><td><a href="?replay=${esc(w.id)}">replay</a></td></tr>`).join("")+`</tbody></table>`;
+    // every listed win has a replay (the server lists only wins with recorded turns); the name is the link, so it is in view on a phone too
+    $("lb").innerHTML=`<table class="lb"><thead><tr><th>#</th><th>Name</th><th>Plies</th><th>Mode</th><th>Jev</th><th>When</th></tr></thead><tbody>`+
+      d.wins.map((w,i)=>`<tr><td>${i+1}</td><td><a href="?replay=${esc(w.id)}" title="Replay this game">${esc(w.name)} ▸</a></td><td>${w.plies}</td><td>${esc(w.mode)}</td><td>${esc(w.model||"")}</td><td>${w.ended_at?new Date(w.ended_at).toLocaleDateString():""}</td></tr>`).join("")+`</tbody></table>`;
   }catch(e){ $("lb").innerHTML=`<span class="na">Hall of fame unavailable (${esc(friendly(e.message))}).</span>`; }
 }
 

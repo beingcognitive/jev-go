@@ -824,10 +824,12 @@ test("records: leaderboard lists only real-Jev human wins and the memory store s
   await store.upsertGame({ id: "b".repeat(16), game: "gomoku", mode: "naked", jev: "O", backend: "native", model: "jev-1.13.0", result: "human_wins", plies: 20, created_at: t, ended_at: t });
   await store.upsertGame({ id: "c".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "mock", model: null, result: "human_wins", plies: 10, created_at: t, ended_at: t });
   await store.upsertGame({ id: "d".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1.13.0", result: "jev_wins", plies: 25, created_at: t, ended_at: t });
+  await store.upsertGame({ id: "e".repeat(16), game: "gomoku", mode: "player", jev: "O", backend: "native", model: "jev-1.13.0", result: "human_wins", plies: 15, created_at: t, ended_at: t }); // no turns: no replay
+  for (const id of ["a", "b"]) await store.addTurn({ game_id: id.repeat(16), ply: 0, side: "human", move: "H8", board: ["x"], source: "human" });
   const lb = await store.leaderboard("gomoku");
-  assert.deepEqual(lb.map((w) => w.plies), [20, 30]);
+  assert.deepEqual(lb.map((w) => w.plies), [20, 30]); // the 15-ply win without recorded turns is not listed
   assert.equal(lb[0].name, "anonymous");
-  assert.deepEqual(await store.stats("gomoku"), { games: 3, jev_wins: 1, human_wins: 2, draws: 0 });
+  assert.deepEqual(await store.stats("gomoku"), { games: 4, jev_wins: 1, human_wins: 3, draws: 0 }); // stats count the unreplayable win; the hall of fame does not list it
   assert.equal((await handleLeaderboard({}, { game: "checkers" }, {})).status, 400);
   assert.equal((await handleGame({ id: "zz" }, {}, {})).status, 400);
   assert.equal((await handleGame({ id: "0".repeat(16) }, {}, {})).status, 404);
@@ -883,6 +885,7 @@ test("login issues a session; the session attributes games; /api/me lists them; 
   // a finished human win under a session appears in the leaderboard under the Google name, no claim needed
   const store = storeFor({});
   await store.upsertGame({ id: "e".repeat(16), game: "go", mode: "player", jev: "O", backend: "native", model: "jev-1.13.0", result: "human_wins", plies: 40, created_at: Date.now(), ended_at: Date.now(), user_id: login.body.user.id, name: "Kyung-Hoon" });
+  await store.addTurn({ game_id: "e".repeat(16), ply: 0, side: "human", move: "E5", board: ["x"], source: "human" }); // a listed win needs its replay
   const lb = await store.leaderboard("go");
   assert.equal(lb[0].name, "Kyung-Hoon");
   assert.equal(r1.body.owner, "Kyung-Hoon");
@@ -1013,6 +1016,8 @@ test("d1 store: the production SQL keeps first-write attribution, marks a change
   assert.equal((await store.attach(id3, "g_z", "Zed")).user_id, "g_z"); assert.equal(await store.attach(id3, "g_y", "Yan"), null);
   assert.equal((await store.myGames("g_z"))[0].backend, "mock");
   assert.deepEqual(await store.leaderboard("chess"), []);
+  assert.deepEqual(await store.leaderboard("gomoku"), []); // Alice's win has no recorded turns yet, so no replay, so not listed
+  await store.addTurn({ game_id: id, ply: 0, side: "human", move: "H8", board: ["x"], source: "human" });
   assert.equal((await store.leaderboard("gomoku"))[0].name, "Alice");
   await store.addTurn({ game_id: id3, ply: 0, side: "human", move: "e4", board: ["x"], source: "human" });
   assert.equal((await store.getTurn(id3, 0)).move, "e4"); assert.equal(await store.getTurn(id3, 1), null);

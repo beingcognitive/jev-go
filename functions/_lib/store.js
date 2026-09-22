@@ -35,7 +35,7 @@ export function memoryStore() {
     },
     async leaderboard(game) {
       return [...games.values()]
-        .filter((g) => g.game === game && g.result === "human_wins" && g.backend === "native")
+        .filter((g) => g.game === game && g.result === "human_wins" && g.backend === "native" && (turns.get(g.id) || []).some(Boolean)) // a win with no recorded turns has no replay: not listed
         .sort((a, b) => a.plies - b.plies || b.ended_at - a.ended_at)
         .slice(0, LEADERBOARD_LIMIT)
         .map(publicGame);
@@ -104,6 +104,7 @@ export function d1Store(db) {
       const { results } = await db.prepare(
         `SELECT id, game, mode, plies, name, model, ended_at FROM games
          WHERE game = ?1 AND result = 'human_wins' AND backend = 'native'
+           AND EXISTS (SELECT 1 FROM turns WHERE turns.game_id = games.id)
          ORDER BY plies ASC, ended_at DESC LIMIT ${LEADERBOARD_LIMIT}`,
       ).bind(game).all();
       return results.map(publicGame);
