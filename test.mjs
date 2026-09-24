@@ -745,6 +745,17 @@ test("seventh review round (Codex): an illegal king capture is no capturer; an e
   for (const f of ["C4", "D4", "C3", "D3"]) assert.ok(an.indexOf(e9) < an.findIndex((a) => a.key === f), f);
 });
 
+test("eighth review round (Codex): a second pinner keeps the pin; a shared region with a weak neighbour is no eye", () => {
+  const two = fenGame("8/8/8/4r3/2k1q3/4R3/P3KN2/8 w - - 0 1"); // after Qxd3+, Re5 still pins Re3: Nd3 hangs
+  const nd3 = C.analyzeAll(two).find((a) => a.key === "Nd3");
+  assert.equal(nd3.hangs, true, nd3.desc); assert.equal(nd3.gain, -3);
+  const one = fenGame("8/8/8/8/2k1q3/4R3/P3KN2/8 w - - 0 1"); // the previous round's position still holds
+  assert.equal(C.analyzeAll(one).find((a) => a.key === "Nd3").hangs, false);
+  const rows = ["O.X...XOO", "OOOXXXXOO", "OOOOOOOOO", "OOOOOOOOO", "OOOOOOOOO", "OOOOOOOOO", "OOOOOOOOO", "O.O.OOOOO", "OOOOOOOOO"].map((x) => x.split(""));
+  const e9 = Go.analyzeAll(rows, "X", "O", new Set([Go.hash(rows)]), null).find((a) => a.key === "E9");
+  assert.doesNotMatch(e9.desc, /2 eyes/, e9.desc);
+});
+
 test("heuristic rank is counted among the options offered, so refuted moves never push Jev's pick down", async () => {
   // O to move after X J9 in the owner's lost game, one move earlier (I9 not yet played): the danger search drops refuted moves
   const b = lostPos("D11", "C12", "E10", "D10", "J9", "I9");

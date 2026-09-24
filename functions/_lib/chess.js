@@ -121,7 +121,7 @@ function bearing(c, square, color, freed = null) {
     const p = c.get(sq);
     if (!p) continue;
     const pin = pinned(c, sq, color, square);
-    if (pin && !(freed && freed.includes(pin))) { guards++; continue; }
+    if (pin && !(freed && freed.includes(sq))) { guards++; continue; }
     squares.push(sq);
     values.push(VALUE[p.type]);
     if (p.type !== "k" && (cheapest === null || VALUE[p.type] < cheapest)) { cheapest = VALUE[p.type]; attacker = p.type; }
@@ -144,13 +144,23 @@ function see(target, att, def, attGuards = 0, defGuards = 0) {
 function riskOn(c, square, val, me) {
   const att = bearing(c, square, otherColor(me));
   if (!att.values.length) return { risk: 0, attacker: null, defended: false };
-  // A defender is freed from its pin only when its pinner is the sole capturer (that capture releases it). With
-  // several capturers the pinned defender is left out: the others may take first while it is still pinned, so the
-  // read errs toward reporting a loss rather than hiding one.
-  // (a king is no capturer where any piece of ours, pinned or not, guards the square)
+  // A pinned defender counts only when the enemy has a single capturer and, after that capture is played, chess.js
+  // lets the defender take back (the capture may lift the pin, or another piece may still hold it). With several
+  // capturers it is left out: the read errs toward reporting a loss rather than hiding one. A king is no capturer
+  // where any piece of ours, pinned or not, guards the square.
   const guarded = c.attackers(square, me).length > 0;
   const capturers = att.squares.filter((sq) => !(guarded && c.get(sq).type === "k"));
-  const def = bearing(c, square, me, capturers.length === 1 ? capturers : null);
+  let def = bearing(c, square, me);
+  if (def.guards && capturers.length === 1) {
+    const cap = c._moves({ square: capturers[0] }).find((x) => x.to === OX(square));
+    if (cap) {
+      c._makeMove(cap);
+      let back;
+      try { back = c._moves().filter((x) => x.to === OX(square)).map((x) => x.from); } finally { c._undoMove(); }
+      const freed = c.attackers(square, me).filter((sq) => back.includes(OX(sq)));
+      if (freed.length) def = bearing(c, square, me, freed);
+    }
+  }
   if (!def.values.length && !def.guards) return { risk: val, attacker: att.attacker ?? "k", defended: false };
   const risk = see(val, att.values, def.values, att.guards, def.guards);
   return { risk, attacker: risk > 0 ? att.attacker ?? "k" : null, defended: def.values.length > 0 }; // a pinned guard cannot recapture

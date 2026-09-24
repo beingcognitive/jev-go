@@ -130,6 +130,17 @@ export function score(board) {
 // After a stone was placed at (r,c): the separate empty regions its empty neighbours now belong to, and how many are
 // eyes: bordered only by the stone's own group, or a region where the opponent cannot legally play any point (a
 // region touching another of our groups that the opponent can enter, by capturing, is a false eye).
+function othersSafe(board, pts, own) {
+  const inRegion = new Set(pts.map(([a, b]) => a * SIZE + b)), seen = new Set();
+  for (const [a, b] of pts) for (const [x, y] of N4(a, b)) {
+    const id = x * SIZE + y;
+    if (board[x][y] === "." || own.has(id) || seen.has(id)) continue;
+    const g = group(board, x, y);
+    for (const [p, q] of g.stones) seen.add(p * SIZE + q);
+    if ([...g.liberties].filter((l) => !inRegion.has(l)).length < 2) return false;
+  }
+  return true;
+}
 function splitInfo(board, r, c, opp, history) {
   const own = new Set(group(board, r, c).stones.map(([a, b]) => a * SIZE + b));
   const seen = new Set();
@@ -148,7 +159,9 @@ function splitInfo(board, r, c, opp, history) {
         else if (!own.has(j)) mine = false;
       }
     }
-    if (mine || (opp && pts.every(([a, b]) => tryMove(board, a, b, opp, history).error))) eyes++;
+    // shared with another of our groups: an eye only if the opponent cannot play in it now and each of those groups
+    // has two or more liberties outside it (so the opponent cannot take the region by capturing that group)
+    if (mine || (opp && pts.every(([a, b]) => tryMove(board, a, b, opp, history).error) && othersSafe(board, pts, own))) eyes++;
   }
   return { regions, eyes };
 }
