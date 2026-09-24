@@ -42,8 +42,9 @@ a{color:var(--felt)}
 .top{max-width:1120px;margin:0 auto 16px;display:flex;align-items:center;gap:8px 12px;padding:8px 0;border-bottom:1px solid var(--rule)}
 .iconbtn{width:40px;height:40px;min-height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:20px;line-height:1;border-radius:999px}
 .iconbtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.top .seg{flex:none}
-.mark{flex:none;font:600 20px/1 var(--serif);font-variation-settings:"opsz" 36;letter-spacing:-.01em;color:var(--ink);text-decoration:none;white-space:nowrap;margin-right:4px}
+.top .seg{flex:none;order:1}
+.top>*{order:3}.top>#menubtn{order:0}
+.mark{order:2;flex:none;font:600 20px/1 var(--serif);font-variation-settings:"opsz" 36;letter-spacing:-.01em;color:var(--ink);text-decoration:none;white-space:nowrap;margin-right:4px}
 @media (min-width:401px) and (max-width:559px){.mark{display:none}} /* one row cannot hold the menu, the name, three games and Google's button here */
 #whoin{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 @media (max-width:480px){.top .seg button{padding:6px 10px;font-size:14px}.who #whoname,.who #signout{display:none}} /* on a phone the bar shows the avatar only; Sign out is in the menu */ /* the bar must hold the menu, the game and the account on a phone */
@@ -53,7 +54,7 @@ a{color:var(--felt)}
 .topright{margin-left:auto;display:flex;align-items:center;gap:8px}
 .who{display:flex;align-items:center;gap:8px;font-size:15px;min-height:40px}
 .who img{width:28px;height:28px;border-radius:50%}
-@media (max-width:400px){.top{flex-wrap:wrap;row-gap:8px}.top .seg{order:3;flex:1 0 100%;justify-content:center}} /* below 400px one row cannot hold the menu, three games and Google's button: the pill takes its own row */
+@media (max-width:400px){.top{flex-wrap:wrap;row-gap:8px}.top .seg{order:4;flex:1 0 100%;justify-content:center}.top .mark{order:1}} /* below 400px one row cannot hold the menu, three games and Google's button: the pill takes its own row */
 
 /* ----- one column up to 1099px; from 1100px a live game stays one centred column (main.solo) and a replay uses two; the play track is pinned to the board's width ----- */
 main{max-width:720px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
