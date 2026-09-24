@@ -1,4 +1,6 @@
-# Beat Jev — can you beat a decision model at Gomoku, Go or chess?
+# Jev, go.
+
+**A new decision AI that plays Gomoku, Go and chess. Can you beat it?**
 
 **Live:** https://jev-go.chardonn.ai
 
