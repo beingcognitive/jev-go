@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jev, go.</title>
 <meta name="description" content="Jev, go. A new decision AI that plays Gomoku, Go and chess. Can you beat it? Every call to the model is shown.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Jev, go.">
+<meta property="og:url" content="https://jev-go.chardonn.ai/">
+<meta property="og:title" content="Jev, go.">
+<meta property="og:description" content="A new decision AI that plays Gomoku, Go and chess. Can you beat it?">
+<meta property="og:image" content="https://jev-go.chardonn.ai/og.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Jev, go.: a Gomoku board mid-game beside the tagline">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Jev, go.">
+<meta name="twitter:description" content="A new decision AI that plays Gomoku, Go and chess. Can you beat it?">
+<meta name="twitter:image" content="https://jev-go.chardonn.ai/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500..700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -113,10 +125,8 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .ghost.O{background:radial-gradient(circle at 34% 32%,#fff,#d0d0d0);border:1px solid #999}
 .ghost.aim{opacity:.85;box-shadow:0 0 0 2px var(--felt),0 1px 3px rgba(0,0,0,.35)}
 /* chess */
-.boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25);padding:8px} /* thin and even: the coordinates live inside the edge squares */
-.grid.chess .coord{position:absolute;font-size:max(10px,calc(var(--cell) * .2));font-weight:700;line-height:1;pointer-events:none;user-select:none}
-.grid.chess .coord.rk{top:3px;left:3px}.grid.chess .coord.fl{bottom:3px;right:4px}
-.grid.chess .cell.light .coord{color:#a97c55}.grid.chess .cell.dark .coord{color:#efdcbb}
+.boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25);padding:8px} /* thin and even */
+
 /* replay countdown: three beats over the empty board, then it plays itself; a tap or a key skips */
 .countdown{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;text-align:center;border-radius:6px;background:rgba(30,33,28,.34);cursor:pointer;color:var(--paper)}
 .countdown b{font:700 clamp(84px,30vw,150px)/1 var(--serif);font-variation-settings:"opsz" 144;font-variant-numeric:tabular-nums;text-shadow:0 8px 28px rgba(0,0,0,.45);animation:pop .7s ease-out}
@@ -497,8 +507,7 @@ function buildGrid(){
   document.querySelector(".boardwrap").classList.toggle("chess",!!cfg.chess);
   fitBoard();
   if(cfg.chess){
-    // coordinates sit inside the edge squares (rank top-left on the left file, file bottom-right on the bottom rank),
-    // so the frame can be thin and even; renderChess clears only its own marks, never .coord
+    // no coordinates on the chess board: a player does not need them, and the frame stays thin and even
     gridEl.style.gridTemplateColumns=`repeat(8, var(--cell))`;
     gridEl.style.gridTemplateRows=`repeat(8, var(--cell))`;
     for(let dr=0;dr<8;dr++){
@@ -508,8 +517,6 @@ function buildGrid(){
         const cell=document.createElement("div");
         cell.className="cell "+(((r+c)%2===0)?"light":"dark"); cell.dataset.r=r; cell.dataset.c=c; cell.dataset.key=sq;
         cell.addEventListener("click",()=>onSquare(sq));
-        if(dc===0) cell.appendChild(Object.assign(document.createElement("span"),{className:"coord rk",textContent:String(8-r)}));
-        if(dr===7) cell.appendChild(Object.assign(document.createElement("span"),{className:"coord fl",textContent:cfg.cols[c]}));
         gridEl.appendChild(cell);
       }
     }
@@ -842,7 +849,7 @@ function render(light){
   let sl="";
   if(cfg.chess){ let w=0,b=0; for(const row of S.board) for(const ch of row){ if(ch===".") continue; const v=PVAL[ch.toLowerCase()]||0; if(ch===ch.toUpperCase()) w+=v; else b+=v; } sl=`Material: White ${w}, Black ${b}`; }
   const pgnEl=$("pgn"); pgnEl.hidden=!cfg.chess;
-  if(cfg.chess){ const parts=[]; for(let i=0;i<S.moves.length;i++){ const n=Math.floor(i/2)+1; const t= i===S.moves.length-1 ? `<b>${esc(S.moves[i])}</b>` : esc(S.moves[i]); parts.push(i%2===0?`${n}. ${t}`:t); } pgnEl.innerHTML=parts.length?parts.join(" "):`<span class="na">No moves yet.</span>`; pgnEl.scrollTop=pgnEl.scrollHeight; }
+  if(cfg.chess){ const parts=[]; for(let i=0;i<S.moves.length;i++){ const n=Math.floor(i/2)+1; const t= i===S.moves.length-1 ? `<b>${esc(S.moves[i])}</b>` : esc(S.moves[i]); parts.push(i%2===0?`${n}. ${t}`:t); } pgnEl.innerHTML=parts.join(" "); pgnEl.hidden=!parts.length; /* nothing to list before the first move */ pgnEl.scrollTop=pgnEl.scrollHeight; }
   const promoEl=$("promo"); promoEl.hidden=!(cfg.chess&&S.promo);
   if(cfg.chess&&S.promo){ const w=S.human==="X"; promoEl.innerHTML=`<span>Promote the pawn to</span>`+["q","r","b","n"].map(pz=>{ const m=S.promo.find(x=>x.promotion===pz); return m?`<button type="button" class="${w?"w":"b"}" data-san="${esc(m.san)}" title="${NAMEP[pz]}" aria-label="${NAMEP[pz]}">${pieceSvg(w?pz.toUpperCase():pz)}</button>`:""; }).join("");
     for(const b of promoEl.querySelectorAll("button")) b.addEventListener("click",()=>{ const m=S.promo.find(x=>x.san===b.dataset.san); S.promo=null; S.sel=null; if(m) play(m.san,m); }); }
@@ -851,7 +858,8 @@ function render(light){
   for(const b of $("gameseg").querySelectorAll("button")){ b.classList.toggle("on",b.dataset.v===gameSel); b.disabled=S.busy; b.setAttribute("aria-pressed",b.dataset.v===gameSel); } // picking a game during a replay leaves it
   renderJevCard(pickP);
   const bare=!S.turns.length&&S.status!=="replay"; // before Jev's first move only the board speaks
-  $("strip").classList.toggle("blank",bare); // blanked, not removed: on wide screens its row keeps its height, so nothing shifts on the first move document.querySelector(".more").hidden=bare;
+  $("strip").classList.toggle("blank",bare); // blanked, not removed: on wide screens its row keeps its height, so nothing shifts on the first move
+  document.querySelector(".more").hidden=bare;
   document.querySelector("main").classList.toggle("solo",S.status!=="replay"); // a live game keeps the board centred; a replay opens the second column
 
   const t=S.last;

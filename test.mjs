@@ -1289,3 +1289,12 @@ test("page: every id the script asks for exists once, and the chess sprite holds
   const want = []; for (const c of "wb") for (const p of "KQRBNP") want.push(`pc-${c}${p}`);
   assert.deepEqual(symbols, want.sort());
 });
+
+test("page: the inline script parses (a stray // comment once swallowed a closing brace)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const vm = await import("node:vm");
+  const html = readFileSync(new URL("./public/index.html", import.meta.url), "utf8");
+  const scripts = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.ok(scripts.length >= 1);
+  for (const code of scripts) assert.doesNotThrow(() => new vm.Script(code));
+});
