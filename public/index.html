@@ -107,7 +107,7 @@ h1{font:600 clamp(24px,3.6vw,34px)/1.15 var(--serif);font-variation-settings:"op
 .ghost.O{background:radial-gradient(circle at 34% 32%,#fff,#d0d0d0);border:1px solid #999}
 .ghost.aim{opacity:.85;box-shadow:0 0 0 2px var(--felt),0 1px 3px rgba(0,0,0,.35)}
 /* chess */
-.boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25)}
+.boardwrap.chess{background:linear-gradient(160deg,#6f5236,#4f3a25);padding:12px 30px 30px 8px} /* squares run to the edge of their cells: the right and bottom frame match the label side (8+22, 12+18) */
 /* replay countdown: three beats over the empty board, then it plays itself; a tap or a key skips */
 .countdown{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;text-align:center;border-radius:6px;background:rgba(30,33,28,.34);cursor:pointer;color:var(--paper)}
 .countdown b{font:700 clamp(84px,30vw,150px)/1 var(--serif);font-variation-settings:"opsz" 144;font-variant-numeric:tabular-nums;text-shadow:0 8px 28px rgba(0,0,0,.45);animation:pop .7s ease-out}
@@ -456,7 +456,7 @@ function fitBoard(){
   if(!cfg) return;
   const wide=window.matchMedia&&matchMedia("(min-width:1100px)").matches;
   const avail= wide ? Infinity : document.querySelector(".play").clientWidth; // in two columns the track is the board itself
-  const cell=Math.max(12,Math.min(cfg.cap,Math.floor((avail-42)/cfg.size)));
+  const cell=Math.max(12,Math.min(cfg.cap,Math.floor((avail-(cfg.chess?60:42))/cfg.size))); // label column + frame on both sides
   gridEl.style.setProperty("--cell",cell+"px");
 }
 let fitTimer=null; addEventListener("resize",()=>{ fitBoard(); clearTimeout(fitTimer); fitTimer=setTimeout(()=>{ if(S) render(true); },150); }); // a resize can cross the small-cell threshold
