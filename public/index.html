@@ -1035,14 +1035,14 @@ function rpPlay(){
   rpTimer=setInterval(()=>{ if(!R||R.k>=R.turns.length-1){ rpStop(); return; } stepReplay(R.k+1); },RP_STEP_MS);
 }
 const byHand=(k,light)=>{ if(rpCount) rpCount.cancel(); rpStop(); stepReplay(k,light); };
-$("rpplay").addEventListener("click",rpPlay);
+$("rpplay").addEventListener("click",()=>{ if(rpCount){ rpCount.go(); return; } rpPlay(); }); // during the count, Play just skips it
 $("rpfirst").addEventListener("click",()=>byHand(0)); $("rplast").addEventListener("click",()=>byHand(1e9));
 $("rpprev").addEventListener("click",()=>byHand(R?R.k-1:0)); $("rpnext").addEventListener("click",()=>byHand(R?R.k+1:0));
 $("rprange").addEventListener("input",()=>byHand(Number($("rprange").value),true));
 $("rprange").addEventListener("change",()=>byHand(Number($("rprange").value)));
 document.addEventListener("keydown",(e)=>{ // replay keys: never while a dialog is up, never on top of a focused control's own key
   if(!R||document.querySelector("dialog[open]")||e.target===$("rprange")) return;
-  if(rpCount){ e.preventDefault(); rpCount.go(); return; } // any key skips the countdown
+  if(rpCount){ if(e.metaKey||e.ctrlKey||e.altKey||["Tab","Shift","Control","Alt","Meta"].includes(e.key)) return; e.preventDefault(); rpCount.go(); return; } // a plain key skips the countdown; shortcuts and Tab keep working
   const ctl=e.target.closest&&e.target.closest("input,textarea,select,button,summary,a[href]");
   if(ctl&&!ctl.closest(".replaybar")) return; // the bar's own buttons keep focus after a click; the arrows must still work
   if(e.key==="ArrowLeft") byHand(R.k-1); if(e.key==="ArrowRight") byHand(R.k+1);

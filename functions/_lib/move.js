@@ -211,7 +211,7 @@ export async function handleMove(body, env = {}) {
         info = {
           ...base, move, source: ok ? "best" : "fallback", note: planNote(plan, opp, plan.oppThreatens ? `${opp} threatens; pool restricted to answers` : null),
           latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
-          answers: { best_move: pack(best) }, candidates: plan.pool.map(slim), heuristicRank: plan.cands.all.findIndex((c) => c.key === move) + 1, io: r.io,
+          answers: { best_move: pack(best) }, candidates: plan.pool.map(slim), heuristicRank: plan.pool.findIndex((c) => c.key === move) + 1, io: r.io, // among the options offered
         };
       }
     } else {

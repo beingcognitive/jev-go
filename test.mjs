@@ -745,6 +745,19 @@ test("seventh review round (Codex): an illegal king capture is no capturer; an e
   for (const f of ["C4", "D4", "C3", "D3"]) assert.ok(an.indexOf(e9) < an.findIndex((a) => a.key === f), f);
 });
 
+test("heuristic rank is counted among the options offered, so refuted moves never push Jev's pick down", async () => {
+  // O to move after X J9 in the owner's lost game, one move earlier (I9 not yet played): the danger search drops refuted moves
+  const b = lostPos("D11", "C12", "E10", "D10", "J9", "I9");
+  const plan = playerPlan(b, "O", "X", 12, 2500);
+  if (plan.pool && plan.pool.length > 1) {
+    const r = await handleMove({ board: G.toRows(lostPos("D11", "C12", "E10", "D10", "J9", "I9", "H7")), moves: [], humanMove: "H7", jev: "O", mode: "player" }, {});
+    const j = r.body.jev;
+    if (j.source === "best") assert.equal(j.candidates[j.heuristicRank - 1].key, j.move);
+  }
+  const c = await handleChessMove({ moves: [], humanMove: "e4", jev: "O", mode: "player" }, {});
+  const cj = c.body.jev; assert.equal(cj.candidates[cj.heuristicRank - 1].key, cj.move);
+});
+
 test("chess: the fast mate test agrees with the slow one", () => {
   for (const f of ["1R6/R5Q1/2p1k2p/8/3P4/4n1P1/7P/7K b - - 0 33", "1nb3k1/ppp2p1p/7Q/8/8/8/PBP2PPP/6K1 b - - 0 1", "rrb3k1/2p2p1p/7Q/n7/1n6/nP6/PBP2PPP/6K1 b - - 0 1",
     "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"]) {

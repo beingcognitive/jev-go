@@ -73,7 +73,10 @@ whether Jev's judgment agrees with, beats, or ignores the one-ply evaluation.
 The practice opponent (no key) picks from the same pool with a simple line-length heuristic and a little
 randomness, and it is already hard to beat: in Player mode most of the playing strength is the harness,
 which offers only moves the search could not refute, and says so when the budget stopped it from checking. Jev's share is the difference between the code's first choice and
-Jev's pick, which the page reports as the heuristic rank. To measure Jev alone, use the API-only modes
+Jev's pick, which the page reports as the heuristic rank (where the pick sat among the options code offered).
+The top strip also counts the moves code played without asking Jev (forced wins, blocks, mates, the longest
+defence): in the harness playing itself that is about one move in five, and in another one in five of Jev's
+decisions the position leaves it three options or fewer. To measure Jev alone, use the API-only modes
 below.
 
 Two measurement modes remain in the API only (`mode` in the request body), not on the page:

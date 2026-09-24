@@ -154,7 +154,7 @@ export async function handleChessMove(body, env = {}) {
         const move = ok ? best.choice : plan.pool[0].key;
         info = {
           ...base, move, source: ok ? "best" : "fallback", note: plan.note || null, latencyMs: r.latencyMs, usage: r.usage, model: r.model, optionCount: legal.size,
-          answers: { best_move: pack(best) }, candidates: plan.pool.map(slim), heuristicRank: analyses.findIndex((a) => a.key === move) + 1, io: r.io,
+          answers: { best_move: pack(best) }, candidates: plan.pool.map(slim), heuristicRank: plan.pool.findIndex((a) => a.key === move) + 1, io: r.io, // among the options offered
         };
       }
     } else {
